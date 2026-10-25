@@ -49,6 +49,7 @@ class Upstream:
     pending: dict[int, tuple[float, int]] = field(default_factory=dict)
     # tokens of PULL_RESP we relayed to the forwarder, so TX_ACK can be routed back
     downlink_tokens: dict[int, float] = field(default_factory=dict)
+    was_alive: bool = False
 
     @property
     def name(self) -> str:
@@ -163,7 +164,8 @@ class GwmpMux:
                     break
             err = json.loads(data[12:] or b"{}").get("txpk_ack", {}).get("error")
             if err and err != "NONE":
-                await self.db.add_event("gwmp", "warn", f"TX_ACK error: {err}")
+                log.warning("upstream downlink rejected by the forwarder: %s", err)
+            await self.db.add_event("gwmp", "warn", f"TX_ACK error: {err}")
 
     async def _handle_push(self, eui: bytes, payload: bytes) -> dict[str, Any] | None:
         """Log the forwarder's message. Returns the message to fan out to upstreams (with
@@ -254,6 +256,11 @@ class GwmpMux:
                     await self._connect_upstream(up)
             eui = self.gateway_eui or bytes(8)
             for up in self.upstreams:
+                if up.alive != up.was_alive:
+                    up.was_alive = up.alive
+                    what = "connected (acknowledging)" if up.alive else "lost: no acknowledgement for 60 s"
+                    log.info("upstream %s %s", up.name, what)
+                    await self.db.add_event("gwmp", "info" if up.alive else "warn", f"upstream {up.name} {what}")
                 if up.transport and eui != bytes(8):
                     tok = os.urandom(2)
                     up.pending[int.from_bytes(tok, "big")] = (time.time(), PULL_DATA)
@@ -300,6 +307,8 @@ class GwmpMux:
         phy = decode_phy(tx.get("data", ""), self.vendors) if tx.get("data") else None
         if phy:
             row.update(phy.as_row())
+        log.info("upstream %s downlink %s %s %s MHz %s, %s bytes", up.name, row.get("mtype") or "?",
+                 row.get("devaddr") or "", row["freq"], row["datr"], row["size"])
         if up.cfg.rx_only:
             row["forwarded"] = ["dropped:rx_only"]
             await self.db.add_lorawan_packet(row)

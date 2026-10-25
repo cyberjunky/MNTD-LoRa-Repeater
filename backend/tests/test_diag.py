@@ -97,6 +97,8 @@ async def test_diag_endpoints(client, fake_run):
     txt = await client.get("/api/diag/log.txt?source=kernel&lines=50")
     assert txt.headers["content-type"].startswith("text/plain") and "syncword" in txt.text
     assert (await client.get("/api/diag/log?source=nope")).status_code == 404
+    ups = (await client.get("/api/diag/log?source=upstreams&lines=50&quiet=false")).json()
+    assert ups["lines"] == 0                          # the sample journal has no upstream lines
 
     sysinfo = (await client.get("/api/diag/system")).json()
     assert "undervoltage" in sysinfo and sysinfo["hostname"]

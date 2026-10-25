@@ -533,7 +533,7 @@
   async function refreshDiag() {
     if (!DIAG.srcReady) {
       const sel = $("#diag-log-src");
-      for (const s of ["lora-pkt-fwd", "lorarepeater", "systemd-timesyncd", "kernel", "all"]) sel.append(el("option", { value: s }, s));
+      for (const s of ["lora-pkt-fwd", "lorarepeater", "upstreams", "systemd-timesyncd", "kernel", "all"]) sel.append(el("option", { value: s }, s));
       DIAG.srcReady = true;
     }
     await Promise.all([refreshDiagSystem(), refreshDiagServices(), refreshDiagLog(), refreshDiagHardware(), refreshDiagConfig()].map((p) => p.catch(console.error)));

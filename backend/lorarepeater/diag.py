@@ -26,7 +26,8 @@ from .db import Database
 
 UNITS = ["lora-pkt-fwd", "lorarepeater", "systemd-timesyncd"]
 RESTARTABLE = list(UNITS)
-LOG_SOURCES = {**{u: ["-u", u] for u in UNITS}, "kernel": ["-k"], "all": []}
+LOG_SOURCES = {**{u: ["-u", u] for u in UNITS}, "upstreams": ["-u", "lorarepeater"], "kernel": ["-k"], "all": []}
+SOURCE_FILTER = {"upstreams": r"upstream|downlink"}   # views on another unit's journal
 NOISE = ("syncword not found", "### [GPS] ###", "# GPS sync is disabled")  # lora_pkt_fwd chatter (no GPS on this box)
 SECRET_KEYS = ("token", "psk", "password", "secret", "key")
 BUTTON_PIN = 7
@@ -205,11 +206,13 @@ class Diag:
         if source not in LOG_SOURCES:
             raise HTTPException(404, f"unknown log source {source!r}")
         # fetch more than asked when filtering so the filter still yields `lines` rows
-        fetch = lines * (4 if (pattern or quiet) else 1)
+        fetch = lines * (4 if (pattern or quiet or source in SOURCE_FILTER) else 1)
         rc, out = await run(["journalctl", *LOG_SOURCES[source], "-n", str(fetch), "--no-pager",
                              "-o", "short-iso", "--no-hostname"], 20)
         if rc != 0 and not out.strip():
             out = f"journalctl failed (rc={rc})"
+        if source in SOURCE_FILTER:
+            out = filter_log(out, SOURCE_FILTER[source], False, fetch)
         return filter_log(out, pattern, quiet, lines)
 
     async def hardware(self) -> dict[str, Any]:
