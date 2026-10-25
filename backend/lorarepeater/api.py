@@ -20,6 +20,7 @@ from .config import Config
 from .db import Database
 from .diag import Diag, add_diag_routes
 from .gwmp import GwmpMux
+from .helium import Helium
 from .timesync import TimeSync
 
 log = logging.getLogger(__name__)
@@ -31,7 +32,7 @@ def _read_cpu_temp(path: str) -> float | None:
         return None
 
 
-def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync,
+def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync, helium: Helium,
                extras: dict[str, Any] | None = None) -> FastAPI:
     """`extras` maps a name to an optional object with a status() method (meshsx, telegram)."""
     extras = extras or {}
@@ -94,6 +95,7 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync,
             "db": {"path": str(cfg.db_path), "retention_days": cfg.retention_days, **(counts or {})},
             "gwmp": mux.status(),
             "time": timesync.status(),
+            "helium": {k: v for k, v in (helium.status().get("gateway") or {}).items() if k in ("name", "region", "router")},
             **{name: (obj.status() if obj is not None else None) for name, obj in extras.items()},
         }
 
@@ -162,6 +164,10 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync,
         return {"hours": hours, "bucket_s": bucket, "totals": totals, "per_bucket": per_bucket,
                 "by_mtype": by_mtype, "by_datr": by_datr, "by_freq": by_freq, "devices": devices,
                 "joins": joins, "by_network": by_network, "mac": mac}
+
+    @app.get("/api/helium")
+    async def helium_view() -> dict[str, Any]:
+        return helium.status()
 
     @app.get("/api/lorawan/stats")
     async def gateway_stats(limit: int = Query(200, le=5000)) -> list[dict[str, Any]]:

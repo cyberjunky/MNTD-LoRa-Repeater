@@ -32,6 +32,10 @@ not affiliated with or endorsed by either company; the icon is an original drawi
   node (ROUTER_LATE) decrypts, logs, relays, ACKs and sends. Every packet, hop count, relay
   node, RSSI/SNR, airtime and the node database are recorded.
 - **Telegram bridge**: mesh texts into a chat or channel, `/send` and `/dm` back to the mesh.
+- **Helium**: Helium's gateway-rs runs with the hotspot key from the secure element, so the box
+  stays on Helium alongside TTN. The Helium tab shows the hotspot's on-chain record
+  (location, gain, active state), lifetime/claimed/unclaimed HNT and IOT, the full claim
+  history with amounts, and the owner wallet's balances with a euro value.
 - **No GPS**: the Goldspot HAT does not wire the RAK2287's GNSS to the Pi (no I2C, no UART, no
   antenna lead). The clock comes from NTP via the stock `systemd-timesyncd`, shown in the GUI.
 - **Web GUI** (no internet needed): live packet feeds, per-channel and per-data-rate charts,
@@ -63,9 +67,9 @@ Full guide: [docs/install.md](docs/install.md).
 
 | Path | Content |
 |---|---|
-| `backend/` | Python package `lorarepeater` (FastAPI, asyncio UDP mux, Meshtastic engine, time-sync monitor, diagnostics) and tests |
+| `backend/` | Python package `lorarepeater` (FastAPI, asyncio UDP mux, Meshtastic engine, Helium view, time-sync monitor, diagnostics) and tests |
 | `web/` | The dashboard (static HTML/CSS/JS) |
-| `install/` | `install.sh`, systemd units, sx1302_hal patch, reset script, polkit and udev rules |
+| `install/` | `install.sh`, systemd units, sx1302_hal patch, reset script, gateway-rs settings, polkit and udev rules |
 | `docs/` | [hardware](docs/hardware.md), [architecture](docs/architecture.md), [Meshtastic on the SX1302](docs/meshtastic-on-sx1302.md), [install](docs/install.md), [research](docs/research/) |
 | `tools/` | `sdcard_backup.py` to image the original microSD card before reflashing |
 

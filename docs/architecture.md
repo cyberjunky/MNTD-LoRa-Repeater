@@ -8,7 +8,9 @@ Turn the MNTD Goldspot into a box that
    once (your own ChirpStack, The Things Network, Helium, ...),
 2. is a **Meshtastic repeater** (router node) with its own SX1262 radio,
 3. records everything it hears and relays in a **database**, and
-4. shows it all in a **web GUI**, including time-sync state and diagnostics.
+4. shows it all in a **web GUI**, including time-sync state and diagnostics, and
+5. keeps the box on **Helium** as the same hotspot (gateway-rs with the key in its secure
+   element), with a Helium tab showing its on-chain record, rewards and wallet.
 
 Everything runs on stock Raspberry Pi OS Lite 64-bit; no software from the original firmware is
 used ([hardware.md](hardware.md) has the hardware facts).
@@ -78,6 +80,47 @@ once the SX1302 node worked on the hardware.
 - Transmissions go back through the forwarder as `txpk` (`imme` for own messages, scheduled on
   the SX1302 counter for relays). The forwarder's `TX_ACK` errors appear in the event log.
 - `telegram.py` posts received texts to a chat and sends `/send` and `/dm` messages.
+
+### Helium path
+
+The Goldspot was a Helium hotspot, and its identity is still in the ATECC608 secure element
+(I2C 0x60, slot 0). Helium's own gateway software, **gateway-rs** (`helium_gateway` 1.3.0,
+installed by the installer as `helium-gateway.service`), uses that key directly, so the box keeps
+appearing on Helium as the same hotspot.
+
+```
+ RAK2287 ──▶ lora_pkt_fwd ──▶ gwmp.py mux ──┬──▶ TTN (eu1.cloud.thethings.network:1700)
+                                             └──▶ helium_gateway 127.0.0.1:1680 ──▶ Helium packet router
+                                                   │  key: ecc://i2c-1:96?slot=0     (gRPC, mainnet-router)
+                                                   └─ local API 127.0.0.1:4467
+```
+
+- **Traffic.** `helium` is an upstream of the mux like TTN: every LoRaWAN uplink goes to both, a
+  downlink from either is transmitted (first one wins a timestamp). gateway-rs forwards to the
+  Helium packet router and sends Proof-of-Coverage beacons on its own schedule. Meshtastic never
+  goes upstream.
+- **Service.** `helium-gateway.service` runs unprivileged (`DynamicUser`, group `i2c` only);
+  `/etc/helium_gateway/settings.toml` comes from `install/helium/settings.toml` (key and
+  onboarding key in the ECC608, region EU868, packet forwarder port 1680, local API 4467).
+
+The **Helium tab** is built by `helium.py`, which rebuilds one snapshot every 15 minutes
+(`/api/helium`) from read-only public sources. Nothing is stored and no key or wallet is
+configured: everything is discovered from the hotspot key.
+
+| Step | Source | Call | What it yields |
+|---|---|---|---|
+| 1 | gateway-rs local API | `helium_gateway info key name region router fw` | hotspot key (ECC compact, base58), animal name, region, packet-router session |
+| 2 | Helium entity service | `GET https://entities.nft.helium.io/<hotspot key>` | the hotspot NFT: asset id, rewardable networks, asserted location (H3 cell, lat/lon, city), gain, elevation, onboarding date and fee, `is_active` |
+| 3 | Helium reward oracles | `GET https://hnt-rewards.oracle.helium.io/?assetId=<asset>` and `iot-rewards.oracle…` | lifetime rewards per token (`currentRewards`; HNT 8 decimals, IOT 6) |
+| 4 | Solana RPC `getProgramAccounts` | lazy-distributor program `1azyuavdMyvsivtNxPoz6SucD18eDHeXzFCUPq5XU7w`, memcmp on the asset at offset 40 | one `RecipientV0` account per distributor; `total_rewards` (u64 at offset 72) is what was claimed. Distributor `6gcZXj…` pays HNT, `37eiz5…` paid IOT |
+| 5 | Solana RPC `getSignaturesForAddress` + `getTransaction` | the recipient accounts | claim history: for each claim the wallet whose token balance went up, and by how much (transactions are cached in memory) |
+| 6 | Solana RPC `getBalance`, `getTokenAccountsByOwner` | the wallet that received the claims | SOL, HNT and IOT balances of the owner wallet |
+| 7 | CoinGecko | `simple/price?ids=helium&vs_currencies=eur,usd` | HNT price for value estimates |
+
+Derived values: unclaimed = lifetime (oracle) − claimed (recipient account); value = amount ×
+HNT price. IOT rewards ended with HIP-138 (HNT is the only reward token since), so IOT shows
+history only. The official explorer sits behind bot protection and has no stable API; these
+sources are the same ones the Helium wallet uses.
 
 ### Time (and the GPS that is not there)
 

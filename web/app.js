@@ -445,6 +445,68 @@
     if (status) $("#about-version").textContent = `Version ${status.version} · running ${ago(Date.now() / 1000 - status.uptime_s).replace(" ago", "")} · LoRaWAN gateway and Meshtastic repeater for the MNTD Goldspot`;
   }
 
+  // ---------------------------------------------------------------- helium
+  const solscan = (kind, id) => `<a class="mono" href="https://solscan.io/${kind}/${id}" target="_blank" rel="noopener">${esc(id.slice(0, 6))}…${esc(id.slice(-4))}</a>`;
+  const fmtAmt = (v, d = 2) => v == null ? "–" : Number(v).toLocaleString(undefined, { maximumFractionDigits: d });
+  const kvRows = (node, rows) => table(node, [{ h: "", f: (r) => `<span class="muted">${esc(r[0])}</span>` }, { h: "", f: (r) => r[1] ?? "–" }], rows.filter((r) => r[1] !== undefined));
+  async function refreshHelium() {
+    const [s, ups] = await Promise.all([api("/api/helium"), api("/api/lorawan/upstreams")]);
+    const tiles = $("#he-tiles"), note = $("#he-note"); tiles.innerHTML = "";
+    if (!s.enabled) { note.hidden = false; note.innerHTML = "<h3>Helium view disabled</h3><p>Set <span class=\"mono\">helium.enabled: true</span> in config.yaml.</p>"; return; }
+    if (!s.updated) { note.hidden = false; note.innerHTML = "<h3>Collecting…</h3><p>The first Helium snapshot arrives about 10 seconds after the backend starts, then every 15 minutes.</p>"; return; }
+    const gw = s.gateway || {}, h = s.hotspot || {}, r = s.rewards || {}, t = r.tokens || {}, wal = s.wallet || {}, eur = s.price?.HNT?.eur;
+    const up = ups.find((u) => u.name === "helium"), live = (status?.gwmp?.upstreams || []).find((u) => u.name === "helium");
+    const lastClaim = Math.max(0, ...Object.values(t).flatMap((x) => (x.claims || []).map((c) => c.time || 0)));
+    const errs = Object.entries(s.errors || {});
+    note.hidden = !errs.length;
+    note.innerHTML = errs.length ? `<h3>Some sources did not answer</h3><p>${errs.map(([k, v]) => `${esc(k)}: ${esc(v)}`).join("<br>")}</p>` : "";
+    tiles.append(
+      tile("Hotspot", h.name || gw.name || "?", gw.key ? `${gw.key.slice(0, 8)}…${gw.key.slice(-6)}` : "", gw.key ? "good" : "critical"),
+      tile("Packet router", gw.router?.connected ? "connected" : "offline", `${gw.region || "?"} · gateway-rs ${gw.fw || "?"}`, gw.router?.connected ? "good" : "critical"),
+      tile("On-chain status", h.active ? "active" : "inactive", `${(h.networks || []).join(", ").toUpperCase() || "–"} · onboarded ${h.onboarded ? new Date(h.onboarded).toLocaleDateString() : "?"}`, h.active ? "good" : "warning"),
+      tile("Asserted location", h.city || "–", `${h.gain_dbi != null ? h.gain_dbi + " dBi" : ""}${h.elevation_m != null ? ` · ${h.elevation_m} m` : ""}`),
+      tile("HNT earned", fmtAmt(t.HNT?.lifetime, 4), eur && t.HNT ? `≈ € ${fmtAmt(t.HNT.lifetime * eur)} at € ${fmtAmt(eur, 3)}/HNT` : "lifetime"),
+      tile("IOT earned", fmtAmt(t.IOT?.lifetime, 0), "lifetime, before HIP-138"),
+      tile("Unclaimed", `${fmtAmt(t.HNT?.unclaimed, 4)} HNT`, `${fmtAmt(t.IOT?.unclaimed, 0)} IOT`, (t.HNT?.unclaimed || 0) > 0 ? "warning" : "good"),
+      tile("Wallet", wal.balances ? `${fmtAmt(wal.balances.HNT, 3)} HNT` : "–", wal.balances && eur ? `≈ € ${fmtAmt(wal.balances.HNT * eur)} · ${fmtAmt(wal.balances.SOL, 3)} SOL` : ""),
+      tile("Last claim", lastClaim ? ago(lastClaim) : "–", lastClaim ? new Date(lastClaim * 1000).toLocaleDateString() : ""),
+    );
+    const cum = (claims) => { let c = 0; return [...(claims || [])].sort((a, b) => a.time - b.time).map((x) => ({ t: x.time, v: (c += x.amount) })); };
+    lines($("#chart-he-hnt"), cum(t.HNT?.claims), ["v"], ["HNT"], { fmtVal: (v) => n1(v, 2), min: 0 });
+    lines($("#chart-he-iot"), cum(t.IOT?.claims), ["v"], ["IOT"], { fmtVal: (v) => fmtAmt(v, 0), min: 0 });
+    kvRows($("#he-hotspot"), [
+      ["Name", esc(h.name)], ["Hotspot key", h.key ? `<span class="mono">${esc(h.key)}</span>` : undefined],
+      ["NFT asset", h.asset_id ? solscan("token", h.asset_id) : undefined],
+      ["Location", h.lat != null ? `<a href="https://www.openstreetmap.org/?mlat=${h.lat}&mlon=${h.lon}#map=15/${h.lat}/${h.lon}" target="_blank" rel="noopener">${esc([h.city, h.state, h.country].filter(Boolean).join(", "))}</a>` : "not asserted"],
+      ["H3 cell", h.h3 ? `<span class="mono">${esc(h.h3)}</span>` : undefined],
+      ["Antenna gain", h.gain_dbi != null ? `${h.gain_dbi} dBi` : undefined], ["Elevation", h.elevation_m != null ? `${h.elevation_m} m` : undefined],
+      ["Onboarded", h.onboarded ? fmtTs(Date.parse(h.onboarded) / 1000) : undefined],
+      ["Onboarding fee", h.dc_onboarding_fee_paid != null ? `${fmtAmt(h.dc_onboarding_fee_paid, 0)} DC (≈ $${fmtAmt(h.dc_onboarding_fee_paid / 1e5, 0)})` : undefined],
+      ["Rewardable networks", esc((h.networks || []).join(", "))], ["Active", h.active == null ? undefined : h.active ? "yes" : "no"],
+    ]);
+    table($("#he-rewards"), [
+      { h: "Token", f: (x) => x.sym }, { h: "Lifetime", f: (x) => fmtAmt(x.lifetime, 4), num: true }, { h: "Claimed", f: (x) => fmtAmt(x.claimed, 4), num: true },
+      { h: "Unclaimed", f: (x) => fmtAmt(x.unclaimed, 4), num: true }, { h: "Value", f: (x) => x.sym === "HNT" && eur ? `€ ${fmtAmt(x.lifetime * eur)}` : "", num: true },
+      { h: "Recipient", f: (x) => x.recipient ? solscan("account", x.recipient) : "" },
+    ], Object.entries(t).map(([sym, x]) => ({ sym, ...x })), { empty: "no reward data" });
+    kvRows($("#he-wallet"), [
+      ["Address", wal.address ? solscan("account", wal.address) : "found from the claim transactions"],
+      ...Object.entries(wal.balances || {}).map(([k, v]) => [k, `${fmtAmt(v, k === "HNT" ? 4 : 3)}${k === "HNT" && eur ? ` <span class="muted">≈ € ${fmtAmt(v * eur)}</span>` : ""}`]),
+    ]);
+    const claims = Object.entries(t).flatMap(([sym, x]) => (x.claims || []).map((c) => ({ sym, ...c }))).sort((a, b) => b.time - a.time);
+    table($("#he-claims"), [
+      { h: "Date", f: (c) => fmtTs(c.time) }, { h: "Token", f: (c) => c.sym }, { h: "Amount", f: (c) => fmtAmt(c.amount, 4), num: true },
+      { h: "Value now", f: (c) => c.sym === "HNT" && eur ? `€ ${fmtAmt(c.amount * eur)}` : "", num: true }, { h: "Transaction", f: (c) => solscan("tx", c.signature) },
+    ], claims, { empty: "no claims found" });
+    kvRows($("#he-gateway"), [
+      ["Service", gw.error ? `<span class="badge bad">not reachable</span> ${esc(gw.error)}` : `<span class="badge up">running</span> gateway-rs ${esc(gw.fw || "")}`],
+      ["Region", esc(gw.region)], ["Packet router", gw.router ? `${gw.router.connected ? "connected" : "disconnected"} · ${esc(gw.router.uri || "")}` : undefined],
+      ["Mux upstream", up ? `${live?.alive ? "acknowledging" : "silent"} · ${up.push_sent} uplinks pushed, ${up.push_acked} acked, ${up.pull_resp} downlinks` : "not configured (add a helium upstream on 127.0.0.1:1680)"],
+      ["Logs", "Diagnostics → Log → source <span class=\"mono\">helium-gateway</span>"],
+    ]);
+    $("#he-sources").textContent = `Updated ${ago(s.updated)}. Sources: gateway-rs local API, Helium entity service, Helium reward oracles, Solana mainnet RPC, CoinGecko.`;
+  }
+
   async function refreshEvents() { table($("#events"), EVENT_COLS, await api("/api/events?limit=200")); }
 
   // ---------------------------------------------------------------- diagnostics
@@ -551,7 +613,7 @@
   async function refreshDiag() {
     if (!DIAG.srcReady) {
       const sel = $("#diag-log-src");
-      for (const s of ["lora-pkt-fwd", "lorarepeater", "upstreams", "systemd-timesyncd", "kernel", "all"]) sel.append(el("option", { value: s }, s));
+      for (const s of ["lora-pkt-fwd", "lorarepeater", "upstreams", "helium-gateway", "systemd-timesyncd", "kernel", "all"]) sel.append(el("option", { value: s }, s));
       DIAG.srcReady = true;
     }
     await Promise.all([refreshDiagSystem(), refreshDiagServices(), refreshDiagLog(), refreshDiagHardware(), refreshDiagConfig()].map((p) => p.catch(console.error)));
@@ -585,7 +647,7 @@
   }
 
   // ---------------------------------------------------------------- orchestration
-  const refreshTab = (name) => ({ overview: refreshOverview, lorawan: refreshLorawan, mesh: refreshMesh, upstreams: refreshUpstreams, events: refreshEvents, diag: refreshDiag, about: refreshAbout }[name]().catch(console.error));
+  const refreshTab = (name) => ({ overview: refreshOverview, lorawan: refreshLorawan, mesh: refreshMesh, upstreams: refreshUpstreams, helium: refreshHelium, events: refreshEvents, diag: refreshDiag, about: refreshAbout }[name]().catch(console.error));
   async function refreshAll() { try { await refreshStatus(); await refreshTab(tab); } catch (e) { console.error(e); } }
   // tabs read the status (gateway EUI, node, channels): load it before the first tab renders
   refreshStatus().catch(console.error).finally(() => showTab(tab));

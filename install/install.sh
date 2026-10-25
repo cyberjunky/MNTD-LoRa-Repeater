@@ -13,6 +13,8 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INSTALL_DIR=/opt/lorarepeater
 HAL_DIR=/opt/sx1302_hal
 HAL_TAG="${HAL_TAG:-V2.1.0}"
+HELIUM_GW_VERSION=1.3.0
+HELIUM_GW_SHA256=8462e792592b24aae8fff587185ec59080e818ff2fff132dde7dd5eafdabbf2d
 CONF_DIR=/etc/lorarepeater
 DATA_DIR=/var/lib/lorarepeater
 BOOT_CFG=/boot/firmware/config.txt
@@ -144,9 +146,18 @@ install -m 644 "$REPO_DIR/install/polkit/10-lorarepeater.rules" /etc/polkit-1/ru
 install -m 644 "$REPO_DIR/install/udev/99-lorarepeater-leds.rules" /etc/udev/rules.d/99-lorarepeater-leds.rules
 udevadm control --reload && udevadm trigger --subsystem-match=leds --action=add
 systemd-tmpfiles --create /etc/tmpfiles.d/lorarepeater.conf
+# Helium gateway (gateway-rs): the hotspot identity is in the ATECC608, traffic arrives via the mux
+if [ "$(helium_gateway --version 2>/dev/null)" != "helium_gateway $HELIUM_GW_VERSION" ]; then
+    curl -fsSL -o /tmp/helium_gateway.tgz \n        "https://github.com/helium/gateway-rs/releases/download/v$HELIUM_GW_VERSION/helium-gateway-$HELIUM_GW_VERSION-aarch64-unknown-linux-musl.tar.gz"
+    echo "$HELIUM_GW_SHA256  /tmp/helium_gateway.tgz" | sha256sum -c --quiet
+    tar xzf /tmp/helium_gateway.tgz -C /tmp helium_gateway
+    install -m 755 /tmp/helium_gateway /usr/local/bin/helium_gateway
+    rm -f /tmp/helium_gateway /tmp/helium_gateway.tgz
+fi
+install -D -m 644 "$REPO_DIR/install/helium/settings.toml" /etc/helium_gateway/settings.toml
 systemctl daemon-reload
-systemctl enable lora-pkt-fwd lorarepeater >/dev/null
-systemctl restart lora-pkt-fwd lorarepeater
+systemctl enable lora-pkt-fwd lorarepeater helium-gateway >/dev/null
+systemctl restart lora-pkt-fwd helium-gateway lorarepeater
 systemctl enable --now systemd-timesyncd >/dev/null
 
 

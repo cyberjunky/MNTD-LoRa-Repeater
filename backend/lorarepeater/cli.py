@@ -16,6 +16,7 @@ from .api import create_app
 from .config import Config
 from .db import Database
 from .gwmp import GwmpMux
+from .helium import Helium
 from .lorawan import Vendors
 from .meshsx import MeshSxEngine
 from .telegram import TelegramBridge
@@ -27,12 +28,14 @@ async def _serve(cfg: Config) -> None:
     await db.open()
     mux = GwmpMux(cfg.gwmp, db, Vendors(cfg.db_path.parent / "ieee"))
     timesync = TimeSync()
+    helium = Helium(cfg.helium)
     meshsx = MeshSxEngine(cfg.meshsx, db, mux) if cfg.meshsx.enabled else None
     telegram = TelegramBridge(cfg.telegram, db, meshsx=meshsx)
     if cfg.hardware.led_enabled:
         led.set_state("orange")
     await mux.start()
     await timesync.start()
+    await helium.start()
     if meshsx:
         await meshsx.start()
     await telegram.start()
@@ -52,7 +55,7 @@ async def _serve(cfg: Config) -> None:
                 last_prune = asyncio.get_running_loop().time()
 
     prune_task = asyncio.create_task(housekeeping_loop())
-    app = create_app(cfg, db, mux, timesync, extras={"meshsx": meshsx, "telegram": telegram})
+    app = create_app(cfg, db, mux, timesync, helium, extras={"meshsx": meshsx, "telegram": telegram})
     server = uvicorn.Server(uvicorn.Config(app, host=cfg.web.host, port=cfg.web.port, log_level="info", loop="asyncio"))
 
     loop = asyncio.get_running_loop()
@@ -69,6 +72,7 @@ async def _serve(cfg: Config) -> None:
         if meshsx:
             await meshsx.stop()
         await timesync.stop()
+        await helium.stop()
         await mux.stop()
         if cfg.hardware.led_enabled:
             led.set_state("off")

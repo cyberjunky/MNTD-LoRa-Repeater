@@ -37,7 +37,9 @@ The script (idempotent, re-run any time):
    the reset script,
 4. resets the SX1302 on GPIO 25 and reads its EUI with `chip_id` (stops if it does not answer),
 5. writes `/etc/lorarepeater/global_conf.json` from the original EU868 profile,
-6. installs the Python backend into `/opt/lorarepeater/venv`, the systemd units and the
+6. installs Helium's gateway-rs (`helium_gateway`, release checksum verified) with the hotspot
+   key from the secure element, the Python backend into `/opt/lorarepeater/venv`, the systemd
+   units and the
    polkit/udev rules.
 
 Environment variables for the script:
@@ -95,6 +97,15 @@ Within a minute the console shows the gateway as connected and the Upstreams til
 Uplinks from TTN devices in range then reach TTN through this box, and TTN downlinks are
 transmitted by it. The upstream hostname is re-resolved every five minutes, so TTN's rotating
 addresses are followed automatically.
+
+### Helium
+
+The `helium` upstream (127.0.0.1:1680) is configured by default: `helium-gateway.service`
+forwards to Helium with the hotspot's original identity from the ATECC608, so there is nothing
+to register. The **Helium** tab shows the hotspot name, packet-router connection, on-chain
+record, rewards and the owner wallet (all fetched from public Helium and Solana services; see
+[architecture.md](architecture.md#helium-path)). To leave Helium: remove the `helium` upstream,
+set `helium.enabled: false` and `sudo systemctl disable --now helium-gateway`.
 
 ### Other networks
 

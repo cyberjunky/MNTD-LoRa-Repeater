@@ -11,7 +11,7 @@ the stock software, and RAKwireless documentation linked below.
 | Carrier | RAKwireless Pi HAT, black PCB, `www.RAKwireless.com`, FCF-4 94V-0, mini-PCIe socket, 40-pin female header on the bottom, an unpopulated 2×20 through-hole row on the top edge. On-board 5 V buck converter (`4R7` inductor, 220 µF 6.3 V cap), micro-USB connector, `LED1`, SMA bulkheads for LoRa and GPS. |
 | Concentrator | RAK2287 LoRa Concentrator Module, **EU868**, **GPS variant** (`GPS` u.FL on the module, date code 2129). Semtech SX1302 baseband + 2× SX1250 front ends + u-blox GNSS. |
 | EEPROM | `BL24C32F` 32 kbit I2C EEPROM at 0x50 (`dtoverlay=at24`, driver `at24`). |
-| Secure element | ATECC608 at I2C 0x60, the UDFN-8 at `U8` (answers on the bus). |
+| Secure element | ATECC608 at I2C 0x60, the UDFN-8 at `U8`. Holds the Helium hotspot key (slot 0) and onboarding key (slot 15); gateway-rs uses it as `ecc://i2c-1:96?slot=0`. |
 | LED | **Not fitted.** The LP5562 footprint `U6` and the `LED1`/`D6` pads are unpopulated on this revision; nothing answers at 0x30. The front light pipes sit over the Pi's own PWR and ACT LEDs. |
 | Enclosure | Gold anodised aluminium extrusion, external LoRa antenna on SMA, label `by RAKwireless`. The module's `GPS` u.FL has no cable. |
 

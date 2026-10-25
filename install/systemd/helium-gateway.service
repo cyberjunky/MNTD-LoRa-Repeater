@@ -1,0 +1,15 @@
+[Unit]
+Description=Helium gateway (gateway-rs): forwards LoRaWAN traffic and Proof-of-Coverage to Helium
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/helium_gateway -c /etc/helium_gateway/settings.toml server
+# the hotspot key is in the ATECC608 on I2C bus 1; nothing else is needed
+DynamicUser=yes
+SupplementaryGroups=i2c
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

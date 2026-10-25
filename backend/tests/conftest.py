@@ -8,6 +8,7 @@ from lorarepeater.api import create_app
 from lorarepeater.config import Config, GwmpConfig
 from lorarepeater.db import Database
 from lorarepeater.gwmp import GwmpMux
+from lorarepeater.helium import Helium
 from lorarepeater.timesync import TimeSync
 
 
@@ -24,7 +25,7 @@ async def client(tmp_path):
                               "hop_limit": 2, "hop_start": 3, "hops_used": 1, "rssi": -90, "snr": 5})
     await db.upsert_mesh_node({"num": 1, "node_id": "!00000001", "long_name": "Test", "last_heard": time.time()})
     await db.add_event("system", "info", "test")
-    app = create_app(cfg, db, mux, TimeSync())   # not started: no timedatectl
+    app = create_app(cfg, db, mux, TimeSync(), Helium(cfg.helium))   # not started: no timedatectl
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
     await db.close()

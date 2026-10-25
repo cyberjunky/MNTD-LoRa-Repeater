@@ -16,6 +16,7 @@
     <button data-tab="lorawan">LoRaWAN</button>
     <button data-tab="mesh">Meshtastic</button>
     <button data-tab="upstreams">Upstreams</button>
+    <button data-tab="helium">Helium</button>
     <button data-tab="events">Events</button>
     <button data-tab="diag">Diagnostics</button>
     <button data-tab="about">About</button>
@@ -99,6 +100,26 @@
     <div class="card" id="up-help" hidden></div>
     <div class="card"><h3>Upstream networks <span class="muted">(LoRaWAN network servers this gateway forwards to, Semtech UDP)</span></h3><table class="tbl" id="up-table"></table></div>
     <div class="card"><h3>Downlinks <span class="muted">(transmissions requested by an upstream)</span></h3><table class="tbl" id="up-downlinks"></table></div>
+  </section>
+
+  <!-- ============================ HELIUM ============================== -->
+  <section id="tab-helium" class="tab">
+    <div class="tiles" id="he-tiles"></div>
+    <div class="card" id="he-note" hidden></div>
+    <div class="grid2">
+      <figure class="card"><figcaption>HNT claimed <span class="muted">(cumulative, per claim)</span></figcaption><div class="chart" id="chart-he-hnt"></div></figure>
+      <figure class="card"><figcaption>IOT claimed <span class="muted">(cumulative, before HIP-138)</span></figcaption><div class="chart" id="chart-he-iot"></div></figure>
+    </div>
+    <div class="grid2">
+      <div class="card"><h3>Hotspot <span class="muted">(on-chain NFT)</span></h3><table class="tbl" id="he-hotspot"></table></div>
+      <div class="card"><h3>Rewards</h3><table class="tbl" id="he-rewards"></table>
+        <h3 style="margin-top:16px">Owner wallet</h3><table class="tbl" id="he-wallet"></table></div>
+    </div>
+    <div class="grid2">
+      <div class="card"><h3>Claim history</h3><table class="tbl compact" id="he-claims"></table></div>
+      <div class="card"><h3>Gateway service <span class="muted">(gateway-rs on this box)</span></h3><table class="tbl" id="he-gateway"></table>
+        <p class="muted" id="he-sources" style="margin:12px 0 0;font-size:12px"></p></div>
+    </div>
   </section>
 
   <!-- ============================ EVENTS ============================== -->

@@ -11,16 +11,16 @@ gwmp:
   pull_interval_s: 10
   # LoRaWAN network servers to fan out to. All receive every uplink; the first to answer
   # a downlink slot wins. Set rx_only: true to log but never transmit for that network.
-  upstreams: []
+  upstreams:
+    - name: helium           # helium_gateway (gateway-rs) on this box, key in the ATECC608
+      host: 127.0.0.1
+      port: 1680
   #  - name: chirpstack
   #    host: 192.168.1.10
   #    port: 1700
   #  - name: ttn
   #    host: eu1.cloud.thethings.network
   #    port: 1700
-  #  - name: helium
-  #    host: 127.0.0.1      # helium gateway-rs listening on 1680
-  #    port: 1680
 
 # Meshtastic on the RAK2287 itself (patched sx1302_hal, service channel at 869.525 MHz).
 # This is the default: one radio, one antenna. The box is a real Meshtastic node.

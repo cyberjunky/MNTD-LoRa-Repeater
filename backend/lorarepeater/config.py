@@ -76,6 +76,14 @@ class TelegramConfig(BaseModel):
     poll_timeout_s: int = 30
 
 
+class HeliumConfig(BaseModel):
+    """Helium view: gateway-rs on this box (key in the ATECC608) plus public Helium/Solana data."""
+
+    enabled: bool = True
+    cli: str = "/usr/local/bin/helium_gateway"
+    settings: str = "/etc/helium_gateway/settings.toml"
+
+
 class WebConfig(BaseModel):
     host: str = "0.0.0.0"
     port: int = 8080
@@ -98,6 +106,7 @@ class Config(BaseModel):
     gwmp: GwmpConfig = Field(default_factory=GwmpConfig)
     meshsx: MeshSxConfig = Field(default_factory=MeshSxConfig)
     telegram: TelegramConfig = Field(default_factory=TelegramConfig)
+    helium: HeliumConfig = Field(default_factory=HeliumConfig)
     web: WebConfig = Field(default_factory=WebConfig)
     hardware: HardwareConfig = Field(default_factory=HardwareConfig)
 

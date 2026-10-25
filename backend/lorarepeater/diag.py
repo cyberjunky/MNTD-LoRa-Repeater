@@ -24,7 +24,7 @@ from fastapi.responses import PlainTextResponse
 from .config import Config
 from .db import Database
 
-UNITS = ["lora-pkt-fwd", "lorarepeater", "systemd-timesyncd"]
+UNITS = ["lora-pkt-fwd", "lorarepeater", "helium-gateway", "systemd-timesyncd"]
 RESTARTABLE = list(UNITS)
 LOG_SOURCES = {**{u: ["-u", u] for u in UNITS}, "upstreams": ["-u", "lorarepeater"], "kernel": ["-k"], "all": []}
 SOURCE_FILTER = {"upstreams": r"lorarepeater\.gwmp: upstream"}   # views on another unit's journal
