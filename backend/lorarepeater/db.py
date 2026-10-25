@@ -248,6 +248,20 @@ class Database:
 
     # -- maintenance -----------------------------------------------------------------
 
+    async def clear(self, include_nodes: bool = False) -> dict[str, int]:
+        """Delete all logged traffic and events (and the node list if asked), then VACUUM."""
+        tables = ["lorawan_packets", "gateway_stats", "mesh_packets", "events"]
+        if include_nodes:
+            tables.append("mesh_nodes")
+        counts: dict[str, int] = {}
+        async with self._lock:
+            for table in tables:
+                cur = await self.conn.execute(f"DELETE FROM {table}")
+                counts[table] = cur.rowcount
+            await self.conn.commit()
+            await self.conn.execute("VACUUM")
+        return counts
+
     async def prune(self, retention_days: int) -> None:
         cutoff = time.time() - retention_days * 86400
         async with self._lock:

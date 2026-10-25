@@ -234,7 +234,7 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, mesh: MeshIngest, timesy
         if loop is not None:
             loop.call_later(1.0, lambda: os._exit(0))
 
-    add_diag_routes(app, Diag(cfg, restart_self=restart_self))
+    add_diag_routes(app, Diag(cfg, db, restart_self=restart_self))
 
     # -- static GUI -------------------------------------------------------------------
 

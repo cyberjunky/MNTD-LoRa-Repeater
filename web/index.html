@@ -91,7 +91,9 @@
     <div class="tiles" id="diag-tiles"></div>
     <div class="card">
       <div class="row"><h3>Services</h3><span class="muted" id="diag-action-msg"></span>
-        <button id="diag-probe" title="Stops the forwarder, pulses reset, runs chip_id, starts the forwarder again">Probe concentrator</button></div>
+        <button id="diag-probe" title="Stops the forwarder, pulses reset, runs chip_id, starts the forwarder again">Probe concentrator</button>
+        <button id="diag-clear-db" title="Delete logged packets, gateway stats and events">Clear database</button>
+        <button id="diag-clear-logs" title="Empty the systemd journal">Clear logs</button></div>
       <table class="tbl" id="diag-services"></table>
       <pre class="log short" id="diag-action-out" hidden></pre>
     </div>

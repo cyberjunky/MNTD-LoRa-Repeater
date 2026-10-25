@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import logging
 import signal
+import subprocess
 import sys
 
 import uvicorn
@@ -79,6 +80,17 @@ async def _serve(cfg: Config) -> None:
         await db.close()
 
 
+async def _clear_db(cfg: Config, include_nodes: bool) -> dict[str, int]:
+    db = Database(cfg.db_path)
+    await db.open()
+    try:
+        counts = await db.clear(include_nodes)
+        await db.add_event("system", "info", f"database cleared from the command line: {counts}")
+        return counts
+    finally:
+        await db.close()
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="lorarepeater", description="LoRaWAN + Meshtastic repeater backend")
     p.add_argument("--version", action="version", version=__version__)
@@ -88,13 +100,22 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--debug", action="store_true")
     c = sub.add_parser("check-config", help="load and print the effective configuration")
     c.add_argument("--config", "-c", default=None)
+    d = sub.add_parser("clear-db", help="delete logged packets, gateway stats and events")
+    d.add_argument("--config", "-c", default=None)
+    d.add_argument("--nodes", action="store_true", help="also forget the known Meshtastic nodes")
+    sub.add_parser("clear-logs", help="empty the systemd journal (runs lorarepeater-clear-logs.service)")
     args = p.parse_args(argv)
 
     logging.basicConfig(
         level=logging.DEBUG if getattr(args, "debug", False) else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    if args.cmd == "clear-logs":
+        return subprocess.call(["systemctl", "start", "lorarepeater-clear-logs.service"])
     cfg = Config.load(args.config)
+    if args.cmd == "clear-db":
+        print(asyncio.run(_clear_db(cfg, args.nodes)))
+        return 0
     if args.cmd == "check-config":
         print(cfg.model_dump_json(indent=2))
         return 0

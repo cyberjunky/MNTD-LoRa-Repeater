@@ -340,6 +340,17 @@
   }
   $("#diag-services").onclick = (e) => { const a = e.target.dataset.action; if (a) runAction(a, e.target); };
   $("#diag-probe").onclick = (e) => runAction("probe-concentrator", e.target);
+  $("#diag-clear-db").onclick = async (e) => {
+    if (!confirm("Delete all logged LoRaWAN and Meshtastic packets, gateway stats and events?")) return;
+    const nodes = confirm("Also forget the known Meshtastic nodes?\n\nOK = clear nodes too, Cancel = keep the node list");
+    await runAction(nodes ? "clear-database-all" : "clear-database", e.target);
+    refreshAll();
+  };
+  $("#diag-clear-logs").onclick = async (e) => {
+    if (!confirm("Empty the systemd journal? journald cannot delete per unit, so this clears the log of every service.")) return;
+    await runAction("clear-logs", e.target);
+    refreshDiagLog().catch(console.error);
+  };
   async function refreshDiagServices() {
     const rows = await api("/api/diag/services"), sx = status?.meshsx;
     // the default Meshtastic node is not a unit: it runs inside lorarepeater on the SX1302 service channel

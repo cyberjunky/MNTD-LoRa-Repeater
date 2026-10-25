@@ -132,3 +132,14 @@ async def test_diag_endpoints(client, fake_run):
     assert r["ok"] and r["eui"] == "0016C001FF000001" and r["reset_pin"] == 25
     assert fake_run[-1] == ["systemctl", "start", "lora-pkt-fwd.service"]
     assert any(c[0].endswith("reset_lgw.sh") for c in fake_run)
+
+    r = (await client.post("/api/diag/action/clear-logs")).json()
+    assert r["ok"] and fake_run[-1] == ["systemctl", "start", "lorarepeater-clear-logs.service"]
+
+    assert (await client.get("/api/mesh/nodes")).json()
+    r = (await client.post("/api/diag/action/clear-database")).json()
+    assert r["ok"] and "lorawan_packets 1" in r["output"] and "mesh_packets 1" in r["output"]
+    assert (await client.get("/api/lorawan/packets")).json() == []
+    assert (await client.get("/api/mesh/nodes")).json()          # node list kept
+    assert (await client.post("/api/diag/action/clear-database-all")).json()["ok"]
+    assert (await client.get("/api/mesh/nodes")).json() == []

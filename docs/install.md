@@ -95,7 +95,9 @@ curl -s localhost:8080/api/status | jq
 
 Web GUI: `http://<hostname>:8080/`. Its **Diagnostics** tab shows service states with restart
 buttons, the journal of each unit (filter, download), an I2C/GPIO/device scan, a concentrator
-probe (chip_id) and the effective configuration. Meshtastic web client (meshtasticd modes only):
+probe (chip_id), Clear database / Clear logs buttons and the effective configuration.
+The same from a shell: `sudo -u lorarepeater /opt/lorarepeater/venv/bin/lorarepeater clear-db -c
+/etc/lorarepeater/config.yaml [--nodes]` and `sudo systemctl start lorarepeater-clear-logs`. Meshtastic web client (meshtasticd modes only):
 `https://<hostname>:9443/`.
 
 ## Troubleshooting

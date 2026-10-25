@@ -1,0 +1,8 @@
+[Unit]
+Description=lorarepeater: clear the systemd journal (started from the web GUI or `lorarepeater clear-logs`)
+
+[Service]
+Type=oneshot
+# journald cannot delete per unit: this empties the whole journal, keeping only the active file's new entries
+ExecStart=/usr/bin/journalctl --rotate
+ExecStart=/usr/bin/journalctl --vacuum-time=1s

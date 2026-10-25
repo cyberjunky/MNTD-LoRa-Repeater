@@ -9,6 +9,9 @@ polkit.addRule(function (action, subject) {
     }
     var units = ["lora-pkt-fwd.service", "lorarepeater.service", "systemd-timesyncd.service", "meshtasticd.service"];
     var verbs = ["start", "stop", "restart"];
+    if (action.lookup("unit") === "lorarepeater-clear-logs.service" && action.lookup("verb") === "start") {
+        return polkit.Result.YES;
+    }
     if (units.indexOf(action.lookup("unit")) >= 0 && verbs.indexOf(action.lookup("verb")) >= 0) {
         return polkit.Result.YES;
     }

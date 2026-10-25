@@ -22,6 +22,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 
 from .config import Config
+from .db import Database
 
 UNITS = ["lora-pkt-fwd", "lorarepeater", "systemd-timesyncd", "meshtasticd"]
 RESTARTABLE = list(UNITS)
@@ -30,6 +31,7 @@ NOISE = ("syncword not found",)  # lora_pkt_fwd debug chatter
 SECRET_KEYS = ("token", "psk", "password", "secret", "key")
 BUTTON_PIN = 7
 FORWARDER_ENV = Path("/etc/default/lora-pkt-fwd")
+CLEAR_LOGS_UNIT = "lorarepeater-clear-logs.service"
 GLOBAL_CONF = Path("/etc/lorarepeater/global_conf.json")
 GLOBAL_CONF_KEYS = ("gateway_ID", "server_address", "serv_port_up", "serv_port_down")
 DEV_GLOBS = ("spidev*", "i2c-*", "ttyS*", "ttyAMA*", "ttyACM*", "ttyUSB*", "gpiochip*")
@@ -127,8 +129,9 @@ def filter_log(text: str, pattern: str | None, quiet: bool, lines: int) -> str:
 
 
 class Diag:
-    def __init__(self, cfg: Config, restart_self: Any | None = None):
+    def __init__(self, cfg: Config, db: Database, restart_self: Any | None = None):
         self.cfg = cfg
+        self.db = db
         self.hal_dir = Path(cfg.hardware.hal_dir)
         self.reset_script = cfg.hardware.reset_script
         self.restart_self = restart_self
@@ -263,6 +266,14 @@ class Diag:
         acts.append({"name": "probe-concentrator", "label": "Probe concentrator",
                      "desc": "stop the forwarder, pulse reset, run chip_id, start the forwarder "
                              "again (about 15 s)"})
+        acts += [
+            {"name": "clear-database", "label": "Clear database",
+             "desc": "delete all logged packets, gateway stats and events; keep the node list"},
+            {"name": "clear-database-all", "label": "Clear database incl. nodes",
+             "desc": "as clear-database, and forget all known Meshtastic nodes"},
+            {"name": "clear-logs", "label": "Clear logs",
+             "desc": "empty the systemd journal (all units; journald cannot delete per unit)"},
+        ]
         return acts
 
     async def action(self, name: str) -> dict[str, Any]:
@@ -278,6 +289,13 @@ class Diag:
             return {"ok": rc == 0, "output": out.strip() or f"{unit} restarted"}
         if name == "probe-concentrator":
             return await self.probe_concentrator()
+        if name in ("clear-database", "clear-database-all"):
+            counts = await self.db.clear(include_nodes=name == "clear-database-all")
+            await self.db.add_event("system", "info", f"database cleared from the GUI: {counts}")
+            return {"ok": True, "output": "deleted rows: " + ", ".join(f"{t} {n}" for t, n in counts.items())}
+        if name == "clear-logs":
+            rc, out = await run(["systemctl", "start", CLEAR_LOGS_UNIT], 60)
+            return {"ok": rc == 0, "output": out.strip() or "journal cleared"}
         raise HTTPException(404, f"unknown action {name!r}")
 
     async def probe_concentrator(self) -> dict[str, Any]:
