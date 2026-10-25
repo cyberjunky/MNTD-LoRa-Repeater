@@ -97,10 +97,25 @@ def _write(path: Path, src: str, eol: str) -> None:
     path.write_text(src.replace("\n", eol), encoding="utf-8", newline="")
 
 
+def _patch_hal_stop(src: str) -> tuple[str, bool]:
+    """lgw_stop() closes the temperature sensor fd unconditionally; with no sensor it is -1 and
+    close() fails, which makes lgw_stop() return an error. Skip the close in that case."""
+    old = "x = i2c_linuxdev_close(ts_fd);"
+    if old not in src:
+        return src, False
+    return src.replace(old, "x = (ts_fd >= 0) ? i2c_linuxdev_close(ts_fd) : 0; /* " + MARK + ": no sensor */", 1), True
+
+
 def patch_hal_c(path: Path) -> int:
     src, eol = _read(path)
-    if MARK in src:
-        print("already patched:", path)
+    if "ts_fake" in src:
+        # main patch present (earlier versions did not include the lgw_stop fix)
+        src, changed = _patch_hal_stop(src)
+        if changed:
+            _write(path, src, eol)
+            print("patched (lgw_stop fix):", path)
+        else:
+            print("already patched:", path)
         return 0
     m = re.search(r"^static uint8_t ts_addr = 0xFF;.*$", src, re.M)
     if not m:
@@ -125,6 +140,9 @@ def patch_hal_c(path: Path) -> int:
     )
     if n != 1:
         return fail("lgw_get_temperature definition")
+    src, ok = _patch_hal_stop(src)
+    if not ok:
+        return fail("temperature sensor close in lgw_stop")
     _write(path, src, eol)
     print("patched:", path)
     return 0
