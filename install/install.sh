@@ -57,6 +57,8 @@ install -m 755 "$REPO_DIR/install/bin/reset_lgw.sh" /usr/local/bin/reset_lgw.sh
 
 # ------------------------------------------------------------------------------------------
 log "4/6 probing the concentrator"
+# the probe resets the SX1302; a running forwarder would keep going with an unconfigured chip
+if systemctl is-active -q lora-pkt-fwd; then systemctl stop lora-pkt-fwd; fi
 SX1302_RESET_PIN="$RESET_PIN" /usr/local/bin/reset_lgw.sh start
 (cd "$HAL_DIR/util_chip_id" && SX1302_RESET_PIN="$RESET_PIN" timeout 20 ./chip_id -d /dev/spidev0.0) >/tmp/chip_id.log 2>&1 || true
 GW_EUI="$(grep -o 'concentrator EUI: 0x[0-9A-Fa-f]*' /tmp/chip_id.log | sed 's/.*0x//' | tr a-f A-F || true)"
@@ -143,6 +145,7 @@ udevadm control --reload && udevadm trigger --subsystem-match=leds --action=add
 systemd-tmpfiles --create /etc/tmpfiles.d/lorarepeater.conf
 systemctl daemon-reload
 systemctl enable lora-pkt-fwd lorarepeater >/dev/null
+systemctl restart lora-pkt-fwd lorarepeater
 systemctl enable --now systemd-timesyncd >/dev/null
 
 
@@ -156,6 +159,6 @@ cat <<EOF
   Meshtastic     : node on the service channel (meshsx in config.yaml)
   Web GUI        : http://$(hostname -I 2>/dev/null | awk '{print $1}'):8080/
 
-Reboot now so the boot overlays take effect:   sudo reboot
+First install only: reboot so SPI/I2C from config.txt take effect:   sudo reboot
 Then check:  systemctl status lora-pkt-fwd lorarepeater ; timedatectl timesync-status
 EOF
