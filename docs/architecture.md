@@ -98,9 +98,11 @@ appearing on Helium as the same hotspot.
 - **Traffic.** `helium` is an upstream of the mux like TTN: every LoRaWAN uplink goes to both, a
   downlink from either is transmitted (first one wins a timestamp). gateway-rs forwards to the
   Helium packet router. Meshtastic never goes upstream.
-- **No Proof-of-Coverage.** Helium's PoC ingest (`mainnet-pociot.helium.io:9080`) and entropy
-  (`:7080`) services refuse connections (checked 2026-10-25), so beaconing is disabled in the
-  settings. The hotspot is data-only; no beacons or witness links exist any more.
+- **No Proof-of-Coverage.** PoC is retired on both IoT and Mobile by
+  [HIP 149](https://github.com/helium/HIP/blob/main/0149-helium-utility-and-emissions-realignment.md)
+  (approved 2026): IoT hotspots earn only for data transfer, at the existing $/DC rate. The PoC
+  ingest (`mainnet-pociot.helium.io:9080`) and entropy (`:7080`) services refuse connections, so
+  beaconing is disabled in the settings; no beacons or witness links exist any more.
 - **Service.** `helium-gateway.service` runs unprivileged (`DynamicUser`, group `i2c` only);
   `/etc/helium_gateway/settings.toml` comes from `install/helium/settings.toml` (key and
   onboarding key in the ECC608, region EU868, packet forwarder port 1680, local API 4467).

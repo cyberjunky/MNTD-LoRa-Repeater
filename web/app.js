@@ -513,7 +513,7 @@
     tiles.append(
       tile("Hotspot", h.name || gw.name || "?", gw.key || "", gw.key ? "good" : "critical"),
       tile("Packet router", gw.router?.connected ? "connected" : "offline", `${gw.region || "?"} · gateway-rs ${gw.fw || "?"}`, gw.router?.connected ? "good" : "critical"),
-      tile("Onboarded", h.onboarded ? new Date(h.onboarded).toLocaleDateString() : "–", `${(h.networks || []).join(", ").toUpperCase() || "–"} · data only, Helium PoC is offline`),
+      tile("Onboarded", h.onboarded ? new Date(h.onboarded).toLocaleDateString() : "–", `${(h.networks || []).join(", ").toUpperCase() || "–"} · data only: Proof-of-Coverage retired (HIP 149)`),
       tile("Asserted location", h.city || "–", `${h.gain_dbi != null ? h.gain_dbi + " dBi" : ""}${h.elevation_m != null ? ` · ${h.elevation_m} m` : ""}`),
       tile("HNT earned", fmtAmt(t.HNT?.lifetime, 4), eur && t.HNT ? `≈ € ${fmtAmt(t.HNT.lifetime * eur)} at € ${fmtAmt(eur, 3)}/HNT` : "lifetime"),
       tile("IOT earned", fmtAmt(t.IOT?.lifetime, 0), "lifetime, before HIP-138"),
