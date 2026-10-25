@@ -44,7 +44,21 @@ CREATE TABLE IF NOT EXISTS lorawan_packets (
     fport       INTEGER,
     dev_eui     TEXT,
     join_eui    TEXT,
-    forwarded   TEXT                      -- JSON list of upstream names that got it
+    forwarded   TEXT,                     -- JSON list of upstream names that got it
+    adr         INTEGER,                  -- FCtrl flags
+    adr_ack_req INTEGER,
+    ack         INTEGER,
+    fpending    INTEGER,                  -- downlink: more data pending; uplink: Class B
+    fopts       TEXT,                     -- raw FOpts hex
+    mac         TEXT,                     -- JSON list of decoded MAC commands
+    payload_len INTEGER,                  -- encrypted FRMPayload bytes
+    netid       TEXT,                     -- from the DevAddr (or a rejoin request)
+    network     TEXT,                     -- operator name for known NetIDs
+    dev_vendor  TEXT,                     -- IEEE registry name for DevEUI / JoinEUI
+    join_vendor TEXT,
+    battery     INTEGER,                  -- DevStatusAns: 0 external power, 1-254
+    margin      INTEGER,                  -- DevStatusAns / LinkCheckAns link margin, dB
+    airtime_ms  REAL
 );
 CREATE INDEX IF NOT EXISTS ix_lorawan_ts ON lorawan_packets(ts);
 CREATE INDEX IF NOT EXISTS ix_lorawan_devaddr ON lorawan_packets(devaddr);
@@ -92,7 +106,8 @@ CREATE TABLE IF NOT EXISTS mesh_packets (
     direction   TEXT DEFAULT 'rx',        -- 'rx' heard on air, 'tx' originated by us
     source      TEXT,                     -- 'sx1302' (our own node) or 'meshtasticd'
     relayed_by_us INTEGER DEFAULT 0,      -- 1 if we rebroadcast this frame
-    airtime_ms  REAL
+    airtime_ms  REAL,
+    channel_hash INTEGER                  -- header channel hash (identifies unknown/private channels)
 );
 CREATE INDEX IF NOT EXISTS ix_mesh_ts ON mesh_packets(ts);
 CREATE INDEX IF NOT EXISTS ix_mesh_from ON mesh_packets(from_node);
@@ -115,7 +130,27 @@ CREATE TABLE IF NOT EXISTS mesh_nodes (
     lat         REAL, lon REAL, alt REAL,
     via_mqtt    INTEGER,
     is_favorite INTEGER,
-    updated     REAL
+    updated     REAL,
+    firmware    TEXT,                     -- from MAP_REPORT
+    region      TEXT,
+    modem_preset TEXT,
+    uptime_s    INTEGER,
+    temperature REAL, humidity REAL, pressure REAL,
+    sats        INTEGER,
+    has_pki     INTEGER,                  -- announces a public key (PKI DMs)
+    is_licensed INTEGER,
+    online_nodes INTEGER, total_nodes INTEGER,   -- what that node sees (local stats / map report)
+    packets     INTEGER DEFAULT 0         -- frames heard from this node
+);
+
+CREATE TABLE IF NOT EXISTS mesh_links (
+    a       INTEGER NOT NULL,             -- transmitter
+    b       INTEGER NOT NULL,             -- receiver (heard a)
+    source  TEXT NOT NULL,                -- 'rf' (we heard a directly), 'neighborinfo', 'traceroute'
+    snr     REAL,
+    ts      REAL,
+    count   INTEGER DEFAULT 1,
+    PRIMARY KEY (a, b, source)
 );
 
 CREATE TABLE IF NOT EXISTS events (
@@ -144,6 +179,7 @@ class Database:
         self._conn.row_factory = aiosqlite.Row
         await self._conn.executescript(SCHEMA)
         await self._conn.commit()
+
 
     async def close(self) -> None:
         if self._conn:
@@ -200,8 +236,9 @@ class Database:
 
     async def add_lorawan_packet(self, row: dict[str, Any]) -> int:
         row.setdefault("ts", time.time())
-        if isinstance(row.get("forwarded"), list):
-            row["forwarded"] = json.dumps(row["forwarded"])
+        for k in ("forwarded", "mac"):
+            if isinstance(row.get(k), list):
+                row[k] = json.dumps(row[k])
         return await self._insert("lorawan_packets", row)
 
     async def add_gateway_stats(self, row: dict[str, Any]) -> int:
@@ -226,6 +263,19 @@ class Database:
             )
             await self.conn.commit()
         self._notify("mesh_nodes", row)
+
+    async def bump_node_packets(self, num: int) -> None:
+        async with self._lock:
+            await self.conn.execute("UPDATE mesh_nodes SET packets = COALESCE(packets, 0) + 1 WHERE num = ?", (num,))
+            await self.conn.commit()
+
+    async def upsert_mesh_link(self, a: int, b: int, source: str, snr: float | None) -> None:
+        async with self._lock:
+            await self.conn.execute(
+                "INSERT INTO mesh_links (a, b, source, snr, ts) VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(a, b, source) DO UPDATE SET snr = excluded.snr, ts = excluded.ts, count = count + 1",
+                (a, b, source, snr, time.time()))
+            await self.conn.commit()
 
     async def upsert_upstream_status(self, name: str, **fields: Any) -> None:
         row = {"name": name, **fields}
@@ -252,7 +302,7 @@ class Database:
         """Delete all logged traffic and events (and the node list if asked), then VACUUM."""
         tables = ["lorawan_packets", "gateway_stats", "mesh_packets", "events"]
         if include_nodes:
-            tables.append("mesh_nodes")
+            tables += ["mesh_nodes", "mesh_links"]
         counts: dict[str, int] = {}
         async with self._lock:
             for table in tables:

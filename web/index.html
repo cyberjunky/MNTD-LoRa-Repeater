@@ -53,7 +53,12 @@
       <figure class="card"><figcaption>Uplinks by data rate</figcaption><div class="chart" id="chart-lw-datr"></div></figure>
     </div>
     <div class="card"><h3>Upstream networks</h3><table class="tbl" id="lw-upstreams"></table></div>
+    <div class="grid2">
+      <div class="card"><h3>Networks <span class="muted">(from the DevAddr NetID)</span></h3><table class="tbl" id="lw-networks"></table></div>
+      <div class="card"><h3>MAC commands <span class="muted">(unencrypted FOpts)</span></h3><table class="tbl compact" id="lw-mac"></table></div>
+    </div>
     <div class="card"><h3>Devices seen (by DevAddr)</h3><table class="tbl" id="lw-devices"></table></div>
+    <div class="card"><h3>Join requests <span class="muted">(DevEUI, JoinEUI and their IEEE vendor)</span></h3><table class="tbl" id="lw-joins"></table></div>
     <div class="card">
       <div class="row"><h3>Packet log</h3>
         <label>Direction <select id="lw-dir"><option value="">all</option><option value="up">up</option><option value="down">down</option></select></label>
@@ -72,6 +77,10 @@
     </div>
     <div class="card"><h3>Messages</h3><div class="msgs" id="mesh-msgs"></div></div>
     <div class="card"><h3>Nodes</h3><table class="tbl" id="mesh-nodes"></table></div>
+    <div class="grid2">
+      <div class="card"><h3>Links <span class="muted">(who hears whom: direct RF, neighbour info, traceroute)</span></h3><table class="tbl compact" id="mesh-links"></table></div>
+      <div class="card"><h3>Channels heard <span class="muted">(by header hash)</span></h3><table class="tbl compact" id="mesh-channels"></table></div>
+    </div>
     <div class="card">
       <div class="row"><h3>Packet log</h3>
         <label>Port <select id="mesh-port"><option value="">all</option></select></label>

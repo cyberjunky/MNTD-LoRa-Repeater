@@ -27,7 +27,7 @@ from typing import Any
 
 from .config import GwmpConfig, UpstreamConfig
 from .db import Database
-from .lorawan import decode_phy
+from .lorawan import NO_VENDORS, Vendors, decode_phy, lora_airtime_ms
 
 log = logging.getLogger(__name__)
 
@@ -84,7 +84,8 @@ class _ForwarderProtocol(asyncio.DatagramProtocol):
 
 
 class GwmpMux:
-    def __init__(self, cfg: GwmpConfig, db: Database):
+    def __init__(self, cfg: GwmpConfig, db: Database, vendors: Vendors = NO_VENDORS):
+        self.vendors = vendors
         self.cfg = cfg
         self.db = db
         self.loop = asyncio.get_event_loop()
@@ -207,7 +208,8 @@ class GwmpMux:
             if row["rssi"] is None and rx.get("rsig"):
                 row["rssi"] = rx["rsig"][0].get("rssic")
                 row["lsnr"] = rx["rsig"][0].get("lsnr")
-            phy = decode_phy(rx.get("data", "")) if rx.get("data") else None
+            row["airtime_ms"] = lora_airtime_ms(row["datr"], row["codr"], row["size"])
+            phy = decode_phy(rx.get("data", ""), self.vendors) if rx.get("data") else None
             if phy:
                 row.update(phy.as_row())
             await self.db.add_lorawan_packet(row)
@@ -288,7 +290,8 @@ class GwmpMux:
             "modu": tx.get("modu"), "datr": tx.get("datr"), "codr": tx.get("codr"),
             "size": tx.get("size"), "data": tx.get("data"), "forwarded": [],
         }
-        phy = decode_phy(tx.get("data", "")) if tx.get("data") else None
+        row["airtime_ms"] = lora_airtime_ms(row["datr"], row["codr"], row["size"])
+        phy = decode_phy(tx.get("data", ""), self.vendors) if tx.get("data") else None
         if phy:
             row.update(phy.as_row())
         if up.cfg.rx_only:

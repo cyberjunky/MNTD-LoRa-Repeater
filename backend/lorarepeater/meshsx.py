@@ -7,7 +7,10 @@ This engine turns the box into a Meshtastic ROUTER_LATE (or ROUTER / CLIENT_MUTE
 * decodes and decrypts frames on the configured channels, stores them, updates the node table,
 * rebroadcasts what should be rebroadcast (dedup, hop limit, next-hop rules, contention delay,
   EU duty cycle), scheduled precisely on the concentrator's microsecond counter,
-* originates NodeInfo (and optionally Position from the GPS), text messages and ACKs,
+* decodes every Meshtastic port the protobufs describe (telemetry of all kinds, traceroute,
+  neighbour info, map reports, waypoints, paxcounter, store-and-forward, ...), keeps a node
+  table and a link graph (who hears whom, with SNR),
+* originates NodeInfo (and optionally a fixed Position), text messages and ACKs,
 * calls registered listeners for received text, which the Telegram bridge uses.
 
 It is deliberately a *repeater* implementation: no traceroute, no store-and-forward, no PKI
@@ -25,6 +28,8 @@ import time
 from collections import deque
 from collections.abc import Callable
 from typing import Any
+
+from google.protobuf import json_format
 
 from .config import MeshSxConfig
 from .db import Database
@@ -149,6 +154,10 @@ class MeshSxEngine:
         except (ValueError, TypeError) as e:
             log.debug("bad mesh frame: %s", e)
             return
+        if hdr.sender == self.node_num:
+            # our own transmission, picked up by the concentrator's second radio: proves TX, not traffic
+            self.counters["self_echo"] = self.counters.get("self_echo", 0) + 1
+            return
         rssi = rx.get("rssi", rx.get("rssis"))
         snr = rx.get("lsnr")
         if rssi is None and rx.get("rsig"):
@@ -164,7 +173,7 @@ class MeshSxEngine:
         }
         chan = self.by_hash.get(hdr.channel_hash)
         decoded = None
-        if chan is not None and hdr.sender != self.node_num:
+        if chan is not None:
             decoded = self._decode(chan, hdr, raw[HEADER_LEN:])
         if decoded is not None:
             self.counters["decoded"] += 1
@@ -174,14 +183,17 @@ class MeshSxEngine:
         else:
             self.counters["undecodable"] += 1
         row["relayed_by_us"] = 0
+        row["channel_hash"] = hdr.channel_hash
         dup = (hdr.sender, hdr.packet_id) in self.seen
+        if not dup:
+            await self._heard(hdr, rssi, snr)
         pkt_id = await self.db.add_mesh_packet(row)
         if decoded is not None and not dup:
             await self._after_decode(chan, hdr, decoded, rssi, snr)
         await self._maybe_relay(hdr, raw, rx, pkt_id, dup)
 
     def _decode(self, chan: Channel, hdr: Header, body: bytes) -> dict[str, Any] | None:
-        mesh_pb2, portnums_pb2, telemetry_pb2, _ = _pb()
+        mesh_pb2, portnums_pb2, _, _ = _pb()
         try:
             plain = crypt(chan.key, hdr.packet_id, hdr.sender, body)
             data = mesh_pb2.Data()
@@ -195,63 +207,33 @@ class MeshSxEngine:
         except ValueError:
             port = str(data.portnum)
         out: dict[str, Any] = {"portnum": port, "payload": None, "text": None, "priority": None}
+        meta = {k: v for k, v in (("requestId", data.request_id), ("replyId", data.reply_id),
+                                  ("wantResponse", data.want_response), ("emoji", data.emoji)) if v}
         try:
-            if port == "TEXT_MESSAGE_APP":
+            if port in TEXT_PORTS:
                 out["text"] = data.payload.decode("utf-8", "replace")
-            elif port == "NODEINFO_APP":
-                u = mesh_pb2.User()
-                u.ParseFromString(data.payload)
-                out["payload"] = {"user": {"id": u.id, "longName": u.long_name, "shortName": u.short_name,
-                                           "hwModel": mesh_pb2.HardwareModel.Name(u.hw_model) if u.hw_model in mesh_pb2.HardwareModel.values() else str(u.hw_model),
-                                           "role": _role_name(u.role)}}
-            elif port == "POSITION_APP":
-                p = mesh_pb2.Position()
-                p.ParseFromString(data.payload)
-                out["payload"] = {"position": {"latitude": p.latitude_i / 1e7 if p.latitude_i else None,
-                                               "longitude": p.longitude_i / 1e7 if p.longitude_i else None,
-                                               "altitude": p.altitude or None, "time": p.time or None,
-                                               "precisionBits": p.precision_bits or None}}
-            elif port == "TELEMETRY_APP":
-                t = telemetry_pb2.Telemetry()
-                t.ParseFromString(data.payload)
-                which = t.WhichOneof("variant")
-                if which == "device_metrics":
-                    d = t.device_metrics
-                    out["payload"] = {"telemetry": {"deviceMetrics": {"batteryLevel": d.battery_level, "voltage": round(d.voltage, 3),
-                                                                      "channelUtilization": round(d.channel_utilization, 2),
-                                                                      "airUtilTx": round(d.air_util_tx, 2), "uptimeSeconds": d.uptime_seconds}}}
-                elif which == "environment_metrics":
-                    e = t.environment_metrics
-                    out["payload"] = {"telemetry": {"environmentMetrics": {"temperature": round(e.temperature, 2),
-                                                                           "relativeHumidity": round(e.relative_humidity, 1),
-                                                                           "barometricPressure": round(e.barometric_pressure, 1)}}}
-                else:
-                    out["payload"] = {"telemetry": {which or "unknown": True}}
-            elif port == "ROUTING_APP":
-                r = mesh_pb2.Routing()
-                r.ParseFromString(data.payload)
-                out["payload"] = {"routing": {"errorReason": mesh_pb2.Routing.Error.Name(r.error_reason), "requestId": data.request_id}}
+                payload: dict[str, Any] = {}
+            elif port in PORT_MESSAGES:
+                key, cls = PORT_MESSAGES[port]
+                msg = _pb_class(cls)()
+                msg.ParseFromString(data.payload)
+                payload = {key: _clean(json_format.MessageToDict(msg), key)}
             else:
-                out["payload"] = {"bytes": len(data.payload), "requestId": data.request_id or None}
+                payload = {"bytes": len(data.payload), "hex": data.payload[:64].hex()}
         except Exception as e:  # malformed inner protobuf; keep the port at least
-            out["payload"] = {"error": str(e)[:80]}
+            payload = {"error": str(e)[:80], "hex": data.payload[:64].hex()}
+        if meta:
+            payload["meta"] = meta
+        out["payload"] = payload or None
         return out
 
     async def _after_decode(self, chan: Channel, hdr: Header, dec: dict[str, Any], rssi: Any, snr: Any) -> None:
         port, payload = dec["portnum"], dec.get("payload") or {}
-        node: dict[str, Any] = {"num": hdr.sender, "node_id": node_id_str(hdr.sender), "last_heard": time.time(),
-                                "snr": snr, "rssi": rssi, "hops_away": hdr.hops_used, "via_mqtt": int(hdr.via_mqtt)}
-        if port == "NODEINFO_APP" and "user" in payload:
-            u = payload["user"]
-            node.update(long_name=u.get("longName"), short_name=u.get("shortName"), hw_model=u.get("hwModel"), role=u.get("role"))
-        elif port == "POSITION_APP" and "position" in payload:
-            p = payload["position"]
-            node.update(lat=p.get("latitude"), lon=p.get("longitude"), alt=p.get("altitude"))
-        elif port == "TELEMETRY_APP" and "deviceMetrics" in payload.get("telemetry", {}):
-            d = payload["telemetry"]["deviceMetrics"]
-            node.update(battery=d.get("batteryLevel"), voltage=d.get("voltage"),
-                        channel_util=d.get("channelUtilization"), air_util_tx=d.get("airUtilTx"))
-        await self.db.upsert_mesh_node(node)
+        node = node_fields(payload)
+        if node:
+            await self.db.upsert_mesh_node({"num": hdr.sender, "node_id": node_id_str(hdr.sender), **node})
+        for a, b, source, link_snr in links_from(payload, hdr):
+            await self.db.upsert_mesh_link(a, b, source, link_snr)
         if port == "TEXT_MESSAGE_APP" and dec.get("text"):
             self.counters["text_rx"] += 1
             info = {"from": hdr.sender, "to": hdr.to, "channel": chan.index, "channel_name": chan.name,
@@ -263,6 +245,15 @@ class MeshSxEngine:
                     log.warning("text listener failed: %s", e)
         if hdr.to == self.node_num and hdr.want_ack and port != "ROUTING_APP":
             await self.send_ack(hdr.sender, hdr.packet_id, chan)
+
+    async def _heard(self, hdr: Header, rssi: Any, snr: Any) -> None:
+        """Header-only facts, available even for frames we cannot decrypt."""
+        await self.db.upsert_mesh_node({"num": hdr.sender, "node_id": node_id_str(hdr.sender),
+                                        "last_heard": time.time(), "snr": snr, "rssi": rssi,
+                                        "hops_away": hdr.hops_used, "via_mqtt": int(hdr.via_mqtt)})
+        await self.db.bump_node_packets(hdr.sender)
+        if hdr.hops_used == 0 and not hdr.via_mqtt:
+            await self.db.upsert_mesh_link(hdr.sender, self.node_num, "rf", snr)
 
     # -- relay -------------------------------------------------------------------
 
@@ -452,3 +443,98 @@ def _role_name(role: int) -> str:
         return config_pb2.Config.DeviceConfig.Role.Name(role)
     except ValueError:
         return str(role)
+
+
+# ---------------------------------------------------------------- decoding tables
+
+TEXT_PORTS = {"TEXT_MESSAGE_APP", "RANGE_TEST_APP", "DETECTION_SENSOR_APP", "ALERT_APP", "REPLY_APP"}
+PORT_MESSAGES = {   # port -> (payload key, "module.Message")
+    "NODEINFO_APP": ("user", "mesh_pb2.User"),
+    "POSITION_APP": ("position", "mesh_pb2.Position"),
+    "TELEMETRY_APP": ("telemetry", "telemetry_pb2.Telemetry"),
+    "ROUTING_APP": ("routing", "mesh_pb2.Routing"),
+    "TRACEROUTE_APP": ("traceroute", "mesh_pb2.RouteDiscovery"),
+    "NEIGHBORINFO_APP": ("neighborInfo", "mesh_pb2.NeighborInfo"),
+    "WAYPOINT_APP": ("waypoint", "mesh_pb2.Waypoint"),
+    "MAP_REPORT_APP": ("mapReport", "mqtt_pb2.MapReport"),
+    "PAXCOUNTER_APP": ("paxcount", "paxcount_pb2.Paxcount"),
+    "STORE_FORWARD_APP": ("storeForward", "storeforward_pb2.StoreAndForward"),
+    "ADMIN_APP": ("admin", "admin_pb2.AdminMessage"),
+}
+
+
+def _pb_class(path: str):
+    import importlib
+    module, cls = path.split(".")
+    return getattr(importlib.import_module(f"meshtastic.protobuf.{module}"), cls)
+
+
+def _deg(d: dict[str, Any]) -> None:
+    for k in ("latitude", "longitude"):
+        if f"{k}I" in d:
+            d[k] = d.pop(f"{k}I") / 1e7
+
+
+def _clean(d: dict[str, Any], key: str) -> dict[str, Any]:
+    """Human units for the few fields protobuf stores scaled; drop raw key material."""
+    if key in ("position", "mapReport", "waypoint"):
+        _deg(d)
+    if key == "user":
+        d["hasPublicKey"] = bool(d.pop("publicKey", None))
+        d.pop("macaddr", None)
+    if key == "traceroute":
+        for f in ("snrTowards", "snrBack"):        # int8, SNR x4
+            if f in d:
+                d[f] = [s / 4 for s in d[f]]
+    return d
+
+
+def node_fields(payload: dict[str, Any]) -> dict[str, Any]:
+    """Node table columns from a decoded payload."""
+    n: dict[str, Any] = {}
+    if u := payload.get("user"):
+        n.update(long_name=u.get("longName"), short_name=u.get("shortName"), hw_model=u.get("hwModel"),
+                 role=u.get("role", "CLIENT"), has_pki=int(u.get("hasPublicKey", False)),
+                 is_licensed=int(u.get("isLicensed", False)))
+    if p := payload.get("position"):
+        if p.get("latitude") is not None:
+            n.update(lat=p["latitude"], lon=p.get("longitude"), alt=p.get("altitude"))
+        if p.get("satsInView"):
+            n["sats"] = p["satsInView"]
+    if t := payload.get("telemetry"):
+        if d := t.get("deviceMetrics"):
+            n.update(battery=d.get("batteryLevel"), voltage=d.get("voltage"), channel_util=d.get("channelUtilization"),
+                     air_util_tx=d.get("airUtilTx"), uptime_s=d.get("uptimeSeconds"))
+        if e := t.get("environmentMetrics"):
+            n.update(temperature=e.get("temperature"), humidity=e.get("relativeHumidity"),
+                     pressure=e.get("barometricPressure"))
+        if s := t.get("localStats"):
+            n.update(online_nodes=s.get("numOnlineNodes"), total_nodes=s.get("numTotalNodes"),
+                     uptime_s=s.get("uptimeSeconds"), channel_util=s.get("channelUtilization"),
+                     air_util_tx=s.get("airUtilTx"))
+    if m := payload.get("mapReport"):
+        n.update(long_name=m.get("longName"), short_name=m.get("shortName"), hw_model=m.get("hwModel"),
+                 role=m.get("role", "CLIENT"), firmware=m.get("firmwareVersion"), region=m.get("region"),
+                 modem_preset=m.get("modemPreset"), online_nodes=m.get("numOnlineLocalNodes"))
+        if m.get("latitude") is not None:
+            n.update(lat=m["latitude"], lon=m.get("longitude"), alt=m.get("altitude"))
+    return {k: v for k, v in n.items() if v is not None}
+
+
+def links_from(payload: dict[str, Any], hdr: Header) -> list[tuple[int, int, str, float | None]]:
+    """(transmitter, receiver, source, snr) edges from neighbour info and traceroute replies."""
+    out: list[tuple[int, int, str, float | None]] = []
+    if ni := payload.get("neighborInfo"):
+        me = ni.get("nodeId") or hdr.sender
+        for nb in ni.get("neighbors", []):
+            if nb.get("nodeId"):
+                out.append((nb["nodeId"], me, "neighborinfo", nb.get("snr")))
+    tr = payload.get("traceroute")
+    if tr is not None and (payload.get("meta") or {}).get("requestId"):
+        # a reply travels from the traced node (sender) back to the requester (to)
+        for path, snrs in (([hdr.to, *tr.get("route", []), hdr.sender], tr.get("snrTowards", [])),
+                           ([hdr.sender, *tr.get("routeBack", []), hdr.to], tr.get("snrBack", []))):
+            for i in range(len(path) - 1):
+                if BROADCAST not in (path[i], path[i + 1]) and i < len(snrs):
+                    out.append((path[i], path[i + 1], "traceroute", snrs[i]))
+    return out

@@ -133,11 +133,9 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, mesh: MeshIngest, timesy
         params.append(limit)
         rows = await db.fetch(f"SELECT * FROM lorawan_packets WHERE {' AND '.join(where)} ORDER BY id DESC LIMIT ?", params)
         for r in rows:
-            if r.get("forwarded"):
-                try:
-                    r["forwarded"] = json.loads(r["forwarded"])
-                except Exception:
-                    pass
+            for k in ("forwarded", "mac"):
+                if r.get(k):
+                    r[k] = json.loads(r[k])
         return rows
 
     @app.get("/api/lorawan/summary")
@@ -156,14 +154,32 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, mesh: MeshIngest, timesy
             "SELECT freq, COUNT(*) AS n, AVG(rssi) AS rssi, AVG(lsnr) AS snr FROM lorawan_packets "
             "WHERE ts >= ? AND direction='up' GROUP BY freq ORDER BY freq", (since,))
         devices = await db.fetch(
-            "SELECT devaddr, COUNT(*) AS n, MAX(ts) AS last_ts, AVG(rssi) AS rssi, AVG(lsnr) AS snr, MAX(fcnt) AS fcnt "
-            "FROM lorawan_packets WHERE ts >= ? AND devaddr IS NOT NULL GROUP BY devaddr ORDER BY n DESC LIMIT 50", (since,))
+            "SELECT devaddr, MAX(network) AS network, MAX(netid) AS netid, COUNT(*) AS n, MAX(ts) AS last_ts, "
+            "AVG(rssi) AS rssi, AVG(lsnr) AS snr, MAX(fcnt) AS fcnt, GROUP_CONCAT(DISTINCT datr) AS datr, "
+            "GROUP_CONCAT(DISTINCT fport) AS fports, MAX(adr) AS adr, SUM(airtime_ms) AS airtime_ms, "
+            "AVG(payload_len) AS payload_len, "
+            "(SELECT battery FROM lorawan_packets b WHERE b.devaddr = p.devaddr AND b.battery IS NOT NULL ORDER BY id DESC LIMIT 1) AS battery, "
+            "(SELECT margin FROM lorawan_packets b WHERE b.devaddr = p.devaddr AND b.margin IS NOT NULL ORDER BY id DESC LIMIT 1) AS margin "
+            "FROM lorawan_packets p WHERE ts >= ? AND devaddr IS NOT NULL GROUP BY devaddr ORDER BY n DESC LIMIT 200", (since,))
+        joins = await db.fetch(
+            "SELECT dev_eui, MAX(dev_vendor) AS dev_vendor, MAX(join_eui) AS join_eui, MAX(join_vendor) AS join_vendor, "
+            "COUNT(*) AS n, MAX(ts) AS last_ts, AVG(rssi) AS rssi, AVG(lsnr) AS snr, GROUP_CONCAT(DISTINCT mtype) AS kinds "
+            "FROM lorawan_packets WHERE ts >= ? AND dev_eui IS NOT NULL GROUP BY dev_eui ORDER BY last_ts DESC LIMIT 200", (since,))
+        by_network = await db.fetch(
+            "SELECT COALESCE(network, 'NetID ' || netid) AS network, COUNT(*) AS n, COUNT(DISTINCT devaddr) AS devices "
+            "FROM lorawan_packets WHERE ts >= ? AND netid IS NOT NULL GROUP BY 1 ORDER BY n DESC", (since,))
+        mac = await db.fetch(
+            "SELECT devaddr, direction, mac, ts FROM lorawan_packets WHERE ts >= ? AND mac IS NOT NULL ORDER BY id DESC LIMIT 100", (since,))
+        for r in mac:
+            r["mac"] = json.loads(r["mac"])
         totals = await db.fetchone(
             "SELECT COUNT(*) AS total, SUM(direction='up') AS up, SUM(direction='down') AS down, "
             "SUM(stat=-1) AS crc_bad, AVG(CASE WHEN direction='up' THEN rssi END) AS rssi, "
-            "AVG(CASE WHEN direction='up' THEN lsnr END) AS snr FROM lorawan_packets WHERE ts >= ?", (since,))
+            "AVG(CASE WHEN direction='up' THEN lsnr END) AS snr, SUM(airtime_ms) / 1000.0 AS airtime_s, "
+            "COUNT(DISTINCT devaddr) AS devices, COUNT(DISTINCT dev_eui) AS joiners FROM lorawan_packets WHERE ts >= ?", (since,))
         return {"hours": hours, "bucket_s": bucket, "totals": totals, "per_bucket": per_bucket,
-                "by_mtype": by_mtype, "by_datr": by_datr, "by_freq": by_freq, "devices": devices}
+                "by_mtype": by_mtype, "by_datr": by_datr, "by_freq": by_freq, "devices": devices,
+                "joins": joins, "by_network": by_network, "mac": mac}
 
     @app.get("/api/lorawan/stats")
     async def gateway_stats(limit: int = Query(200, le=5000)) -> list[dict[str, Any]]:
@@ -199,6 +215,14 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, mesh: MeshIngest, timesy
     async def mesh_nodes() -> list[dict[str, Any]]:
         return await db.fetch("SELECT * FROM mesh_nodes ORDER BY last_heard DESC NULLS LAST")
 
+    @app.get("/api/mesh/links")
+    async def mesh_links(hours: int = Query(24 * 7, le=24 * 90)) -> list[dict[str, Any]]:
+        since = time.time() - hours * 3600
+        return await db.fetch(
+            "SELECT l.*, na.long_name AS a_name, nb.long_name AS b_name FROM mesh_links l "
+            "LEFT JOIN mesh_nodes na ON na.num = l.a LEFT JOIN mesh_nodes nb ON nb.num = l.b "
+            "WHERE l.ts >= ? ORDER BY l.ts DESC", (since,))
+
     @app.get("/api/mesh/summary")
     async def mesh_summary(hours: int = Query(24, le=24 * 90)) -> dict[str, Any]:
         since = time.time() - hours * 3600
@@ -210,6 +234,9 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, mesh: MeshIngest, timesy
             "FROM mesh_packets WHERE ts >= ? GROUP BY t ORDER BY t", (bucket, bucket, since))
         by_port = await db.fetch(
             "SELECT portnum, COUNT(*) AS n FROM mesh_packets WHERE ts >= ? GROUP BY portnum ORDER BY n DESC", (since,))
+        by_channel = await db.fetch(
+            "SELECT channel_hash, channel, SUM(encrypted) AS encrypted, COUNT(*) AS n, COUNT(DISTINCT from_node) AS nodes "
+            "FROM mesh_packets WHERE ts >= ? AND direction = 'rx' GROUP BY channel_hash ORDER BY n DESC", (since,))
         by_hops = await db.fetch(
             "SELECT hops_used, COUNT(*) AS n FROM mesh_packets WHERE ts >= ? AND hops_used IS NOT NULL GROUP BY hops_used ORDER BY hops_used", (since,))
         top_nodes = await db.fetch(
@@ -224,7 +251,7 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, mesh: MeshIngest, timesy
             "SUM(airtime_ms) / 1000.0 AS airtime_s "
             "FROM mesh_packets WHERE ts >= ?", (since,))
         return {"hours": hours, "bucket_s": bucket, "totals": totals, "per_bucket": per_bucket,
-                "by_port": by_port, "by_hops": by_hops, "top_nodes": top_nodes}
+                "by_port": by_port, "by_hops": by_hops, "top_nodes": top_nodes, "by_channel": by_channel}
 
     # -- diagnostics ------------------------------------------------------------------
 

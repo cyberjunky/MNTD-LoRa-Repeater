@@ -16,6 +16,7 @@ from .api import create_app
 from .config import Config
 from .db import Database
 from .gwmp import GwmpMux
+from .lorawan import Vendors
 from .mesh import MeshIngest
 from .meshsx import MeshSxEngine
 from .telegram import TelegramBridge
@@ -25,7 +26,7 @@ from .timesync import TimeSync
 async def _serve(cfg: Config) -> None:
     db = Database(cfg.db_path)
     await db.open()
-    mux = GwmpMux(cfg.gwmp, db)
+    mux = GwmpMux(cfg.gwmp, db, Vendors(cfg.db_path.parent / "ieee"))
     mesh = MeshIngest(cfg.mesh, db)
     timesync = TimeSync()
     meshsx = MeshSxEngine(cfg.meshsx, db, mux) if cfg.meshsx.enabled else None

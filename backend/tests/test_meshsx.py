@@ -143,3 +143,50 @@ async def test_duty_cycle_and_no_forwarder(engine):
     mux.pulling = False
     assert not await eng.transmit(make_frame("x"))
     assert (await db.fetch("SELECT * FROM events WHERE message LIKE '%not pulling%'"))
+
+
+async def test_decodes_telemetry_neighbors_and_links(engine):
+    from meshtastic.protobuf import telemetry_pb2
+
+    eng, _mux, db = engine
+    t = telemetry_pb2.Telemetry(environment_metrics=telemetry_pb2.EnvironmentMetrics(temperature=21.5, relative_humidity=40))
+    data = mesh_pb2.Data(portnum=portnums_pb2.PortNum.Value("TELEMETRY_APP"), payload=t.SerializeToString())
+    hdr = Header(to=BROADCAST, sender=OTHER, packet_id=0xBEEF0001, hop_limit=3, hop_start=3, channel_hash=8)
+    eng.on_rxpk(rxpk(hdr.pack() + crypt(KEY, 0xBEEF0001, OTHER, data.SerializeToString())))
+    ni = mesh_pb2.NeighborInfo(node_id=OTHER, neighbors=[mesh_pb2.Neighbor(node_id=0x11223344, snr=6.25)])
+    data = mesh_pb2.Data(portnum=portnums_pb2.PortNum.Value("NEIGHBORINFO_APP"), payload=ni.SerializeToString())
+    hdr = Header(to=BROADCAST, sender=OTHER, packet_id=0xBEEF0002, hop_limit=3, hop_start=3, channel_hash=8)
+    eng.on_rxpk(rxpk(hdr.pack() + crypt(KEY, 0xBEEF0002, OTHER, data.SerializeToString())))
+    await settle(eng)
+    node = await db.fetchone("SELECT * FROM mesh_nodes WHERE num = ?", (OTHER,))
+    assert node["temperature"] == 21.5 and node["humidity"] == 40 and node["packets"] == 2
+    links = {(r["a"], r["b"], r["source"]): r["snr"] for r in await db.fetch("SELECT * FROM mesh_links")}
+    assert links[(0x11223344, OTHER, "neighborinfo")] == 6.25
+    assert (OTHER, ME, "rf") in links                       # we heard OTHER directly
+
+
+def test_links_from_traceroute_reply():
+    from lorarepeater.meshsx import links_from
+
+    hdr = Header(to=0xA, sender=0xD, packet_id=1, hop_limit=3, hop_start=3, channel_hash=8)
+    payload = {"traceroute": {"route": [0xB], "snrTowards": [5.0, 2.5], "routeBack": [], "snrBack": [3.0]},
+               "meta": {"requestId": 99}}
+    assert links_from(payload, hdr) == [(0xA, 0xB, "traceroute", 5.0), (0xB, 0xD, "traceroute", 2.5),
+                                        (0xD, 0xA, "traceroute", 3.0)]
+
+
+def test_node_fields_map_report():
+    from lorarepeater.meshsx import node_fields
+
+    n = node_fields({"mapReport": {"longName": "Hill", "hwModel": "RAK4631", "firmwareVersion": "2.7.11",
+                                   "region": "EU_868", "modemPreset": "MEDIUM_FAST", "latitude": 52.1, "longitude": 5.1,
+                                   "numOnlineLocalNodes": 14}})
+    assert n["firmware"] == "2.7.11" and n["modem_preset"] == "MEDIUM_FAST" and n["online_nodes"] == 14 and n["lat"] == 52.1
+
+
+async def test_own_frame_echo_is_not_stored(engine):
+    eng, _mux, db = engine
+    eng.on_rxpk(rxpk(make_frame("me", sender=ME, pid=0xABCD0001)))
+    await settle(eng)
+    assert eng.counters["self_echo"] == 1 and eng.counters["rx"] == 1
+    assert await db.fetch("SELECT * FROM mesh_packets WHERE direction = 'rx'") == []

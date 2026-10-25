@@ -113,9 +113,9 @@ fi
 log "6/8 packet forwarder configuration"
 mkdir -p "$CONF_DIR" "$DATA_DIR"
 python3 - "$REPO_DIR/reference/original-firmware/etc/lorawan/sx1302/global_conf.json.sx1250.EU868" \
-          "$CONF_DIR/global_conf.json" "$GW_EUI" "$MESH" <<'PY'
-import json, re, sys
-src, dst, eui, mesh = sys.argv[1:5]
+          "$CONF_DIR/global_conf.json" "$GW_EUI" "$MESH" "$CONF_DIR/config.yaml" <<'PY'
+import json, os, re, sys
+src, dst, eui, mesh, backend_conf = sys.argv[1:6]
 raw = open(src).read()
 raw = re.sub(r"/\*.*?\*/", "", raw, flags=re.S)
 raw = re.sub(r"//[^\n]*", "", raw)
@@ -126,7 +126,7 @@ sx.pop("spidev_path", None)
 sx["com_type"] = "SPI"
 sx["com_path"] = "/dev/spidev0.0"
 if mesh == "sx1302":
-    # Meshtastic EU_868 LongFast on the 250 kHz service channel at 869.525 MHz.
+    # Meshtastic EU_868 on the 250 kHz service channel at 869.525 MHz (preset from meshsx.datr).
     # The SX1302 accepts |IF| + BW/2 <= 800 kHz per radio, so the eight LoRaWAN channels are
     # regrouped: radio 0 (867.5 MHz, TX) takes 867.1-868.1, radio 1 (868.9 MHz) takes
     # 868.3, 868.5 and the service channel at +625 kHz.
@@ -134,7 +134,12 @@ if mesh == "sx1302":
     plan = [(0, -400000), (0, -200000), (0, 0), (0, 200000), (0, 400000), (0, 600000), (1, -600000), (1, -400000)]
     for i, (radio, iff) in enumerate(plan):
         sx[f"chan_multiSF_{i}"] = {"enable": True, "radio": radio, "if": iff}
-    sx["chan_Lora_std"] = {"enable": True, "radio": 1, "if": 625000, "bandwidth": 250000, "spread_factor": 11,
+    # the Meshtastic preset is chosen once, by meshsx.datr in config.yaml (LongFast SF11, MediumFast SF9)
+    sf = 11
+    if os.path.exists(backend_conf):
+        m = re.search(r"^meshsx:.*?^\s+datr:\s*SF(\d+)BW250", open(backend_conf).read(), re.M | re.S)
+        sf = int(m.group(1)) if m else sf
+    sx["chan_Lora_std"] = {"enable": True, "radio": 1, "if": 625000, "bandwidth": 250000, "spread_factor": sf,
                            "implicit_hdr": False, "implicit_payload_length": 17, "implicit_crc_en": False,
                            "implicit_coderate": 1}
 g = c["gateway_conf"]
@@ -165,6 +170,12 @@ rsync -a --delete "$REPO_DIR/web/" "$INSTALL_DIR/web/" 2>/dev/null || cp -r "$RE
 "$INSTALL_DIR/venv/bin/pip" install -q --upgrade pip
 "$INSTALL_DIR/venv/bin/pip" install -q "$INSTALL_DIR/backend[mesh]"
 [ -f "$CONF_DIR/config.yaml" ] || sed -e "s#__DATA_DIR__#$DATA_DIR#" "$REPO_DIR/install/config.example.yaml" > "$CONF_DIR/config.yaml"
+# IEEE MA-L/MA-M/MA-S registries: DevEUI/JoinEUI -> vendor name in the LoRaWAN tab
+mkdir -p "$DATA_DIR/ieee"
+for f in oui/oui.csv oui28/mam.csv oui36/oui36.csv; do
+    curl -fsSL --max-time 120 -A "Mozilla/5.0 (X11; Linux aarch64) lorarepeater" \
+        -o "$DATA_DIR/ieee/${f#*/}" "https://standards-oui.ieee.org/$f" || warn "could not fetch IEEE $f (vendor names missing)"
+done
 chown -R lorarepeater:lorarepeater "$DATA_DIR" "$CONF_DIR"
 install -m 644 "$REPO_DIR/install/systemd/"*.service /etc/systemd/system/
 install -m 644 "$REPO_DIR/install/systemd/lorarepeater.tmpfiles" /etc/tmpfiles.d/lorarepeater.conf

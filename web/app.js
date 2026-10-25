@@ -165,16 +165,52 @@
   const rowEl = (cols, r) => el("tr", {}, ...cols.map((c) => { const v = c.f(r); const td = el("td", { class: c.num ? "num" : "" }); typeof v === "string" && v.startsWith("<") ? (td.innerHTML = v) : td.append(v ?? "–"); return td; }));
   const prepend = (node, cols, r) => { const tr = rowEl(cols, r); tr.classList.add("new"); const first = node.querySelector("tr:nth-child(2)"); first ? first.before(tr) : node.append(tr); if (node.rows.length > 101) node.deleteRow(-1); };
 
+  // ---------------------------------------------------------------- formatters
+  const macText = (mac) => (mac || []).map((m) => {
+    const { cmd, ...rest } = m;
+    if (cmd === "DevStatusAns") return `${cmd} battery ${m.battery === 0 ? "external" : m.battery == null ? "?" : Math.round(m.battery / 2.54) + "%"} margin ${m.margin} dB`;
+    if (cmd === "DeviceTimeAns") return `${cmd} ${fmtTs(m.gps_time)}`;
+    const kv = Object.entries(rest).map(([k, v]) => `${k}=${v}`).join(" ");
+    return kv ? `${cmd} ${kv}` : cmd;
+  }).join("; ");
+  const nn = (num) => esc(nodeName(nodeMap[num]) || hex(num));
+  function meshContent(r) {
+    if (r.text) return esc(r.text);
+    const p = r.payload || {};
+    if (p.user) return `👤 ${esc(p.user.longName || "")} (${esc(p.user.shortName || "")}) · ${esc(p.user.hwModel || "")} · ${esc(p.user.role || "CLIENT")}${p.user.hasPublicKey ? " · 🔑" : ""}`;
+    if (p.position) return p.position.latitude == null ? "📍 no fix" : `📍 ${n1(p.position.latitude, 5)}, ${n1(p.position.longitude, 5)}${p.position.altitude ? ` · ${p.position.altitude} m` : ""}${p.position.satsInView ? ` · ${p.position.satsInView} sats` : ""}`;
+    if (p.telemetry) {
+      const t = p.telemetry, d = t.deviceMetrics, e = t.environmentMetrics, s = t.localStats, w = t.powerMetrics, a = t.airQualityMetrics;
+      if (d) return `🔋 ${d.batteryLevel ?? "?"}% · ${n1(d.voltage, 2)} V · ch util ${n1(d.channelUtilization, 1)}% · air tx ${n1(d.airUtilTx, 1)}%`;
+      if (e) return "🌡 " + Object.entries(e).map(([k, v]) => `${k} ${typeof v === "number" ? n1(v, 1) : v}`).join(" · ");
+      if (s) return `📊 sees ${s.numOnlineNodes ?? "?"}/${s.numTotalNodes ?? "?"} nodes · tx ${s.numPacketsTx ?? 0} · rx ${s.numPacketsRx ?? 0} · bad ${s.numPacketsRxBad ?? 0} · relayed ${s.numTxRelay ?? 0}`;
+      if (w) return "⚡ " + Object.entries(w).map(([k, v]) => `${k} ${n1(v, 2)}`).join(" · ");
+      if (a) return "🌫 " + Object.entries(a).map(([k, v]) => `${k} ${v}`).join(" · ");
+      return `<span class="mono muted">${esc(JSON.stringify(t).slice(0, 120))}</span>`;
+    }
+    if (p.neighborInfo) return `🕸 ${(p.neighborInfo.neighbors || []).map((x) => `${nn(x.nodeId)} ${n1(x.snr, 1)} dB`).join(", ") || "no neighbours"}`;
+    if (p.traceroute) return `🧭 ${[r.to_node, ...(p.traceroute.route || []), r.from_node].map(nn).join(" → ")}`;
+    if (p.mapReport) return `🗺 ${esc(p.mapReport.longName || "")} · ${esc(p.mapReport.hwModel || "")} · fw ${esc(p.mapReport.firmwareVersion || "?")} · ${esc(p.mapReport.modemPreset || "")} · sees ${p.mapReport.numOnlineLocalNodes ?? "?"}`;
+    if (p.waypoint) return `📌 ${esc(p.waypoint.name || "")} ${esc(p.waypoint.description || "")} · ${n1(p.waypoint.latitude, 5)}, ${n1(p.waypoint.longitude, 5)}`;
+    if (p.paxcount) return `👥 wifi ${p.paxcount.wifi ?? 0} · ble ${p.paxcount.ble ?? 0}`;
+    if (p.routing) return `↩ ${esc(p.routing.errorReason || "ACK")}`;
+    if (r.encrypted) return r.to_node === 0xffffffff ? `🔒 encrypted · channel hash ${r.channel_hash ?? "?"}` : "🔒 direct message (PKI)";
+    return Object.keys(p).length ? `<span class="mono muted">${esc(JSON.stringify(p).slice(0, 120))}</span>` : "";
+  }
+
   // ---------------------------------------------------------------- columns
   const LW_COLS = [
     { h: "Time", f: (r) => fmtTime(r.ts) },
     { h: "Dir", f: (r) => `<span class="badge ${r.direction}">${r.direction}</span>` },
     { h: "Type", f: (r) => r.mtype || "" },
-    { h: "DevAddr / DevEUI", f: (r) => `<span class="mono">${esc(r.devaddr || r.dev_eui || "")}</span>` },
+    { h: "DevAddr / DevEUI", f: (r) => `<span class="mono" title="${esc(r.dev_vendor || "")}">${esc(r.devaddr || r.dev_eui || "")}</span>` },
+    { h: "Network", f: (r) => esc(r.network || (r.netid ? `NetID ${r.netid}` : r.dev_vendor || "")) },
+    { h: "Flags", f: (r) => [r.adr ? "ADR" : "", r.adr_ack_req ? "ADRreq" : "", r.ack ? "ACK" : "", r.fpending ? (r.direction === "down" ? "FPend" : "ClassB") : ""].filter(Boolean).join(" ") },
     { h: "FCnt", f: (r) => r.fcnt, num: true }, { h: "Port", f: (r) => r.fport, num: true },
     { h: "MHz", f: (r) => n1(r.freq, 3), num: true }, { h: "DR", f: (r) => r.datr || "" }, { h: "CR", f: (r) => r.codr || "" },
     { h: "RSSI", f: (r) => r.rssi == null ? "" : n1(r.rssi, 0), num: true }, { h: "SNR", f: (r) => r.lsnr == null ? "" : n1(r.lsnr, 1), num: true },
-    { h: "Bytes", f: (r) => r.size, num: true },
+    { h: "Bytes", f: (r) => r.size, num: true }, { h: "Airtime", f: (r) => r.airtime_ms == null ? "" : `${n1(r.airtime_ms, 0)} ms`, num: true },
+    { h: "MAC", f: (r) => macText(r.mac) || (r.fopts ? `<span class="mono muted" title="encrypted (LoRaWAN 1.1)">${esc(r.fopts)}</span>` : "") },
     { h: "CRC", f: (r) => r.direction === "down" ? "" : r.stat === 1 ? "ok" : r.stat === -1 ? '<span class="badge bad">bad</span>' : "none" },
     { h: "Forwarded", f: (r) => (Array.isArray(r.forwarded) ? r.forwarded : []).join(", ") || (r.upstream || "") },
   ];
@@ -190,7 +226,7 @@
     { h: "Relay", f: (r) => r.relay_node == null ? "" : "…" + r.relay_node.toString(16).padStart(2, "0") },
     { h: "RSSI", f: (r) => r.rssi == null ? "" : n1(r.rssi, 0), num: true }, { h: "SNR", f: (r) => r.snr == null ? "" : n1(r.snr, 1), num: true },
     { h: "Via", f: (r) => r.via_mqtt ? "MQTT" : "RF" },
-    { h: "Content", f: (r) => r.text ? esc(r.text) : r.payload ? `<span class="mono muted">${esc(JSON.stringify(r.payload).slice(0, 80))}</span>` : (r.encrypted ? "🔒 encrypted" : "") },
+    { h: "Content", f: (r) => meshContent(r) },
   ];
   const NODE_COLS = [
     { h: "Node", f: (r) => `<b>${esc(r.long_name || "")}</b> <span class="muted">${esc(r.short_name || "")}</span>` },
@@ -198,7 +234,13 @@
     { h: "Hardware", f: (r) => r.hw_model || "" }, { h: "Role", f: (r) => r.role || "" },
     { h: "Last heard", f: (r) => ago(r.last_heard) }, { h: "Hops", f: (r) => r.hops_away, num: true },
     { h: "SNR", f: (r) => r.snr == null ? "" : n1(r.snr, 1), num: true },
+    { h: "Firmware", f: (r) => esc([r.firmware, r.modem_preset].filter(Boolean).join(" · ")) },
+    { h: "Packets", f: (r) => r.packets, num: true },
     { h: "Battery", f: (r) => r.battery == null ? "" : r.battery > 100 ? "mains" : `${r.battery}%`, num: true },
+    { h: "Env", f: (r) => [r.temperature != null ? `${n1(r.temperature, 1)} °C` : "", r.humidity != null ? `${n1(r.humidity, 0)} %` : "", r.pressure != null ? `${n1(r.pressure, 0)} hPa` : ""].filter(Boolean).join(" · ") },
+    { h: "Uptime", f: (r) => r.uptime_s == null ? "" : r.uptime_s < 86400 ? `${(r.uptime_s / 3600).toFixed(1)} h` : `${(r.uptime_s / 86400).toFixed(1)} d`, num: true },
+    { h: "Sees", f: (r) => r.online_nodes == null ? "" : `${r.online_nodes}${r.total_nodes ? "/" + r.total_nodes : ""}`, num: true },
+    { h: "PKI", f: (r) => r.has_pki ? "🔑" : "" },
     { h: "Ch util", f: (r) => r.channel_util == null ? "" : n1(r.channel_util, 1) + "%", num: true },
     { h: "Position", f: (r) => r.lat == null ? "" : `<a href="https://www.openstreetmap.org/?mlat=${r.lat}&mlon=${r.lon}#map=14/${r.lat}/${r.lon}" target="_blank" rel="noopener">${n1(r.lat, 4)}, ${n1(r.lon, 4)}</a>` },
     { h: "Via", f: (r) => r.via_mqtt ? "MQTT" : "RF" },
@@ -254,7 +296,16 @@
     tiles.append(tile("Uplinks", `${t.up || 0}`, `last ${h} h`), tile("Downlinks", `${t.down || 0}`, `last ${h} h`),
       tile("CRC errors", `${t.crc_bad || 0}`, t.up ? `${(100 * (t.crc_bad || 0) / t.up).toFixed(1)} % of uplinks` : ""),
       tile("Mean RSSI", t.rssi == null ? "–" : `${n1(t.rssi, 0)} dBm`, `mean SNR ${n1(t.snr, 1)} dB`),
-      tile("Devices", `${s.devices.length}`, "distinct DevAddr"));
+      tile("Devices", `${t.devices || 0}`, `${t.joiners || 0} joining (DevEUI)`),
+      tile("Networks", `${s.by_network.length}`, s.by_network.slice(0, 3).map((r) => r.network).join(", ")),
+      tile("Airtime", `${n1(t.airtime_s, 1)} s`, `heard in ${h} h`));
+    table($("#lw-networks"), [{ h: "Network", f: (r) => esc(r.network) }, { h: "Devices", f: (r) => r.devices, num: true }, { h: "Packets", f: (r) => r.n, num: true }], s.by_network);
+    table($("#lw-mac"), [{ h: "Time", f: (r) => fmtTime(r.ts) }, { h: "DevAddr", f: (r) => `<span class="mono">${r.devaddr}</span>` }, { h: "Dir", f: (r) => r.direction }, { h: "Commands", f: (r) => esc(macText(r.mac)) }], s.mac, { empty: "no MAC commands in the clear yet" });
+    table($("#lw-joins"), [
+      { h: "DevEUI", f: (r) => `<span class="mono">${r.dev_eui}</span>` }, { h: "Device vendor", f: (r) => esc(r.dev_vendor || "") },
+      { h: "JoinEUI", f: (r) => `<span class="mono">${r.join_eui || ""}</span>` }, { h: "Join server vendor", f: (r) => esc(r.join_vendor || "") },
+      { h: "Kind", f: (r) => esc(r.kinds || "") }, { h: "Count", f: (r) => r.n, num: true }, { h: "RSSI", f: (r) => n1(r.rssi, 0), num: true }, { h: "Last seen", f: (r) => ago(r.last_ts) },
+    ], s.joins, { empty: "no join requests yet" });
     hBars($("#chart-lw-freq"), s.by_freq.filter((r) => r.freq).map((r) => ({ label: n1(r.freq, 1) + " MHz", value: r.n, rssi: r.rssi })), { extra: (d) => `${n1(d.rssi, 0)} dBm` });
     hBars($("#chart-lw-datr"), s.by_datr.filter((r) => r.datr).map((r) => ({ label: r.datr, value: r.n })), { color: 1 });
     table($("#lw-upstreams"), [
@@ -264,8 +315,12 @@
       { h: "Downlinks", f: (r) => r.pull_resp, num: true }, { h: "Last PULL_ACK", f: (r) => ago(r.last_pull_ack) },
     ], ups, { empty: "no upstream networks configured (see /etc/lorarepeater/config.yaml)" });
     table($("#lw-devices"), [
-      { h: "DevAddr", f: (r) => `<span class="mono">${r.devaddr}</span>` }, { h: "Packets", f: (r) => r.n, num: true },
-      { h: "Last FCnt", f: (r) => r.fcnt, num: true }, { h: "RSSI", f: (r) => n1(r.rssi, 0), num: true }, { h: "SNR", f: (r) => n1(r.snr, 1), num: true }, { h: "Last seen", f: (r) => ago(r.last_ts) },
+      { h: "DevAddr", f: (r) => `<span class="mono">${r.devaddr}</span>` }, { h: "Network", f: (r) => esc(r.network || `NetID ${r.netid || "?"}`) },
+      { h: "Packets", f: (r) => r.n, num: true }, { h: "Last FCnt", f: (r) => r.fcnt, num: true },
+      { h: "DR", f: (r) => esc(r.datr || "") }, { h: "Ports", f: (r) => esc(r.fports || "") }, { h: "Bytes", f: (r) => r.payload_len == null ? "" : n1(r.payload_len, 0), num: true },
+      { h: "ADR", f: (r) => r.adr ? "yes" : "" }, { h: "Battery", f: (r) => r.battery == null ? "" : r.battery === 0 ? "external" : `${Math.round(r.battery / 2.54)}%`, num: true },
+      { h: "Margin", f: (r) => r.margin == null ? "" : `${r.margin} dB`, num: true }, { h: "Airtime", f: (r) => `${n1(r.airtime_ms / 1000, 1)} s`, num: true },
+      { h: "RSSI", f: (r) => n1(r.rssi, 0), num: true }, { h: "SNR", f: (r) => n1(r.snr, 1), num: true }, { h: "Last seen", f: (r) => ago(r.last_ts) },
     ], s.devices);
     await loadLwLog(true);
   }
@@ -284,7 +339,7 @@
   const MESH_STATE = { oldest: null };
   async function refreshMesh() {
     const h = hours();
-    const [s, nodes, msgs] = await Promise.all([api(`/api/mesh/summary?hours=${h}`), api("/api/mesh/nodes"), api("/api/mesh/packets?limit=30&text_only=true")]);
+    const [s, nodes, msgs, links] = await Promise.all([api(`/api/mesh/summary?hours=${h}`), api("/api/mesh/nodes"), api("/api/mesh/packets?limit=30&text_only=true"), api(`/api/mesh/links?hours=${Math.max(h, 168)}`)]);
     nodeMap = Object.fromEntries(nodes.map((n) => [n.num, n]));
     const t = s.totals, tiles = $("#mesh-tiles"); tiles.innerHTML = "";
     tiles.append(tile("Packets heard", `${t.total || 0}`, `last ${h} h · ${t.undecodable || 0} undecodable`),
@@ -299,7 +354,11 @@
     const box = $("#mesh-msgs"); box.innerHTML = "";
     if (!msgs.length) box.append(el("div", { class: "empty" }, "no text messages yet"));
     msgs.forEach((m) => box.append(msgEl(m)));
-    table($("#mesh-nodes"), NODE_COLS, nodes, { empty: "no nodes yet (is meshtasticd running?)" });
+    table($("#mesh-nodes"), NODE_COLS, nodes, { empty: "no nodes heard yet" });
+    table($("#mesh-links"), [{ h: "From", f: (r) => nn(r.a) }, { h: "Heard by", f: (r) => nn(r.b) }, { h: "Source", f: (r) => r.source },
+      { h: "SNR", f: (r) => r.snr == null ? "" : n1(r.snr, 1), num: true }, { h: "Seen", f: (r) => r.count, num: true }, { h: "Last", f: (r) => ago(r.ts) }], links, { empty: "no links yet" });
+    table($("#mesh-channels"), [{ h: "Hash", f: (r) => r.channel_hash ?? "?", num: true }, { h: "Channel", f: (r) => r.channel != null ? (status?.meshsx?.channels || [])[r.channel] || r.channel : "unknown key" },
+      { h: "Packets", f: (r) => r.n, num: true }, { h: "Encrypted", f: (r) => r.encrypted, num: true }, { h: "Nodes", f: (r) => r.nodes, num: true }], s.by_channel, { empty: "nothing heard yet" });
     await loadMeshLog(true);
   }
   const msgEl = (m) => el("div", { class: "msg" }, el("div", {}, m.text), el("div", { class: "meta" }, `${nodeName(nodeMap[m.from_node]) || hex(m.from_node)} → ${m.to_node === 0xffffffff ? "all" : nodeName(nodeMap[m.to_node]) || hex(m.to_node)} · ch ${m.channel} · ${fmtTs(m.ts)} · ${m.hops_used ?? "?"} hops · SNR ${n1(m.snr, 1)}`));
