@@ -14,6 +14,16 @@ A tribute to the hardware: the Goldspot was built by **MNTD** with a carrier boa
 concentrator from **RAKwireless**, and it is a well-made box. This project is independent and
 not affiliated with or endorsed by either company; the icon is an original drawing of the device.
 
+![Overview](docs/screenshots/overview.png)
+
+| LoRaWAN | Meshtastic |
+|---|---|
+| ![LoRaWAN](docs/screenshots/lorawan.png) | ![Meshtastic](docs/screenshots/meshtastic.png) |
+| **Upstreams** | **Diagnostics** |
+| ![Upstreams](docs/screenshots/upstreams.png) | ![Diagnostics](docs/screenshots/diagnostics.png) |
+
+<sub>Dark theme: [screenshot](docs/screenshots/overview-dark.png). Addresses and identifiers in the screenshots are masked.</sub>
+
 ## Features
 
 - **LoRaWAN gateway** on the RAK2287 with the original RAK calibration, forwarding to **any
