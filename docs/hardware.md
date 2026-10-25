@@ -26,8 +26,8 @@ Tags: **seen** = visible in photos or firmware; **inferred** = deduced, verify o
 | 9 / 10 / 11 | SPI0 MISO / MOSI / SCLK | SX1302 |
 | 13 | IO expander enable (sidetable boards only) | Harmless on RAK boards |
 | 14 / 15 | UART (`enable_uart=1`) | Console / mini-UART. On Pi 4 with the stock config the PL011 is used for Bluetooth and the GPS is read over I2C, not UART. |
-| 17 | SX1302 reset on `rakspot`, `rakspot_v2`, `blackspot` | |
-| 25 | SX1302 reset on `rakspot_v3` (EEPROM present) and sidetable | Likely this unit (**inferred**) |
+| 17 | SX1302 reset on `rakspot`, `rakspot_v2`, `blackspot` | Not this unit; pulsing it does nothing |
+| 25 | SX1302 reset on `rakspot_v3` (EEPROM present) and sidetable | **Confirmed on this unit** (2026-10-25: chip_id answers only after a pulse on 25; EUI 0016C001FF000001) |
 | 20 / 6 | GPS enable (sidetable only) | Not used on RAK boards |
 
 Everything else on the 40-pin header is free as far as the firmware shows. SPI1

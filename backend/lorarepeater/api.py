@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -17,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from . import __version__
 from .config import Config
 from .db import Database
+from .diag import Diag, add_diag_routes
 from .gps import GpsMonitor
 from .gwmp import GwmpMux
 from .mesh import MeshIngest
@@ -228,6 +230,16 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, mesh: MeshIngest, gps: G
             "FROM mesh_packets WHERE ts >= ?", (since,))
         return {"hours": hours, "bucket_s": bucket, "totals": totals, "per_bucket": per_bucket,
                 "by_port": by_port, "by_hops": by_hops, "top_nodes": top_nodes}
+
+    # -- diagnostics ------------------------------------------------------------------
+
+    def restart_self() -> None:
+        # systemd restarts us (Restart=always); delay so the HTTP response gets out first
+        loop = loop_holder.get("loop")
+        if loop is not None:
+            loop.call_later(1.0, lambda: os._exit(0))
+
+    add_diag_routes(app, Diag(cfg, restart_self=restart_self))
 
     # -- static GUI -------------------------------------------------------------------
 

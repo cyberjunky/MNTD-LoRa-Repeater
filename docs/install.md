@@ -96,7 +96,10 @@ chronyc sources                      # "#* GPS" once chrony selected the GPS
 curl -s localhost:8080/api/status | jq
 ```
 
-Web GUI: `http://<hostname>:8080/`. Meshtastic web client: `https://<hostname>:9443/`.
+Web GUI: `http://<hostname>:8080/`. Its **Diagnostics** tab shows service states with restart
+buttons, the journal of each unit (filter, download), an I2C/GPIO/device scan, a concentrator
+probe (chip_id) and the effective configuration. Meshtastic web client (meshtasticd modes only):
+`https://<hostname>:9443/`.
 
 ## Troubleshooting
 

@@ -107,6 +107,8 @@ class HardwareConfig(BaseModel):
     led_enabled: bool = False
     led_i2c_path: str = "/sys/bus/i2c/devices/1-0030"
     cpu_temp_path: str = "/sys/class/thermal/thermal_zone0/temp"
+    hal_dir: str = "/opt/sx1302_hal"                 # for the Diagnostics concentrator probe
+    reset_script: str = "/usr/local/bin/reset_lgw.sh"
 
 
 class Config(BaseModel):

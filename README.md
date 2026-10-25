@@ -24,6 +24,8 @@ install script replaces it.
 - **Web GUI** (no internet needed): live packet feeds, per-channel and per-data-rate charts,
   devices and nodes, messages, upstream health, time sync, events. Light/dark.
 - **SQLite** storage with retention, JSON API, WebSocket live feed.
+- **Diagnostics** tab: service states and restarts, per-unit journal viewer, hardware scan,
+  concentrator probe, effective config, raw live feed. No root: restarts go through a polkit rule.
 - Front LED shows health. No telemetry, no phone-home.
 
 ## Quick start

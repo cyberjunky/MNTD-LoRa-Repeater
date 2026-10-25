@@ -16,6 +16,7 @@
     <button data-tab="mesh">Meshtastic</button>
     <button data-tab="gps">GPS &amp; time</button>
     <button data-tab="events">Events</button>
+    <button data-tab="diag">Diagnostics</button>
   </nav>
   <div class="controls">
     <label>Range
@@ -94,6 +95,37 @@
   <!-- ============================ EVENTS ============================== -->
   <section id="tab-events" class="tab">
     <div class="card"><h3>Service events</h3><table class="tbl" id="events"></table></div>
+  </section>
+
+  <!-- ============================ DIAGNOSTICS ========================= -->
+  <section id="tab-diag" class="tab">
+    <div class="tiles" id="diag-tiles"></div>
+    <div class="card">
+      <div class="row"><h3>Services</h3><span class="muted" id="diag-action-msg"></span>
+        <button id="diag-probe" title="Stops the forwarder, pulses reset, runs chip_id, starts the forwarder again">Probe concentrator</button></div>
+      <table class="tbl" id="diag-services"></table>
+      <pre class="log short" id="diag-action-out" hidden></pre>
+    </div>
+    <div class="card">
+      <div class="row"><h3>Log</h3>
+        <label>Source <select id="diag-log-src"></select></label>
+        <label>Lines <select id="diag-log-lines"><option>100</option><option selected>300</option><option>1000</option><option>3000</option></select></label>
+        <label>Filter <input id="diag-log-filter" placeholder="regex, e.g. ERROR|WARN" size="20"></label>
+        <label><input type="checkbox" id="diag-log-quiet" checked> hide noise</label>
+        <label><input type="checkbox" id="diag-log-follow"> follow</label>
+        <button id="diag-log-refresh">Refresh</button>
+        <a id="diag-log-dl" href="/api/diag/log.txt" download="lorarepeater.log">Download</a></div>
+      <pre class="log" id="diag-log"></pre>
+    </div>
+    <div class="grid2">
+      <div class="card"><div class="row"><h3>Hardware</h3><button id="diag-hw-refresh">Rescan</button></div><div id="diag-hw"></div></div>
+      <div class="card"><h3>Effective configuration <span class="muted">(secrets masked)</span></h3><pre class="log tall" id="diag-config"></pre></div>
+    </div>
+    <div class="card">
+      <div class="row"><h3>Raw live feed</h3><span class="muted">every row the backend stores, as JSON</span>
+        <label><input type="checkbox" id="diag-raw-pause"> pause</label><button id="diag-raw-clear">Clear</button></div>
+      <pre class="log" id="diag-raw"></pre>
+    </div>
   </section>
 </main>
 <div id="tooltip" class="tooltip" hidden></div>

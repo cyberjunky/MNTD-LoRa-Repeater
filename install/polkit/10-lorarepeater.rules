@@ -1,0 +1,17 @@
+// Let the unprivileged lorarepeater service user restart the gateway services from the web
+// GUI's Diagnostics tab (systemctl start/stop/restart), nothing else.
+polkit.addRule(function (action, subject) {
+    if (subject.user !== "lorarepeater") {
+        return polkit.Result.NOT_HANDLED;
+    }
+    if (action.id !== "org.freedesktop.systemd1.manage-units") {
+        return polkit.Result.NOT_HANDLED;
+    }
+    var units = ["lora-pkt-fwd.service", "lorarepeater.service", "lorarepeater-gps-bridge.service",
+                 "gpsd.service", "chrony.service", "meshtasticd.service"];
+    var verbs = ["start", "stop", "restart"];
+    if (units.indexOf(action.lookup("unit")) >= 0 && verbs.indexOf(action.lookup("verb")) >= 0) {
+        return polkit.Result.YES;
+    }
+    return polkit.Result.NOT_HANDLED;
+});

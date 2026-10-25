@@ -334,6 +334,97 @@
 
   async function refreshEvents() { table($("#events"), EVENT_COLS, await api("/api/events?limit=200")); }
 
+  // ---------------------------------------------------------------- diagnostics
+  const post = (p) => fetch(p, { method: "POST" }).then(async (r) => { const b = await r.json().catch(() => ({})); if (!r.ok) throw new Error(b.detail || `${p}: ${r.status}`); return b; });
+  const fmtBytes = (b) => b == null ? "–" : b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${(b / 1e6).toFixed(0)} MB`;
+  const fmtDur = (s) => s == null ? "–" : s < 3600 ? `${(s / 60) | 0} min` : s < 86400 ? `${(s / 3600).toFixed(1)} h` : `${(s / 86400).toFixed(1)} d`;
+  const DIAG = { follow: null, rawPaused: false, rawLines: 0, srcReady: false };
+  const SERVICE_COLS = [
+    { h: "Unit", f: (r) => r.unit }, { h: "Description", f: (r) => r.description || "" },
+    { h: "State", f: (r) => `<span class="badge ${r.active === "active" ? "up" : r.active === "failed" ? "bad" : ""}">${esc(r.active)}${r.sub && r.sub !== r.active ? " / " + esc(r.sub) : ""}</span>` },
+    { h: "Enabled", f: (r) => r.enabled || "–" }, { h: "Restarts", f: (r) => r.restarts ?? "–", num: true },
+    { h: "Since", f: (r) => r.since ? esc(r.since.replace(/^\w+ /, "")) : "–" },
+    { h: "", f: (r) => r.restartable ? `<button class="sm" data-action="restart:${r.unit}">Restart</button>` : "" },
+  ];
+  async function runAction(name, btn) {
+    const msg = $("#diag-action-msg"), out = $("#diag-action-out");
+    if (btn) btn.disabled = true;
+    msg.textContent = `${name}…`;
+    try {
+      const r = await post(`/api/diag/action/${encodeURIComponent(name)}`);
+      msg.textContent = r.ok ? `${name}: ok${r.eui ? ` · EUI ${r.eui} · reset GPIO ${r.reset_pin}` : ""}` : `${name}: failed`;
+      if (r.output) { out.textContent = r.output; out.hidden = false; }
+      setTimeout(() => refreshDiagServices().catch(console.error), 1500);
+    } catch (e) { msg.textContent = `${name}: ${e.message}`; }
+    if (btn) btn.disabled = false;
+  }
+  $("#diag-services").onclick = (e) => { const a = e.target.dataset.action; if (a) runAction(a, e.target); };
+  $("#diag-probe").onclick = (e) => runAction("probe-concentrator", e.target);
+  async function refreshDiagServices() { table($("#diag-services"), SERVICE_COLS, await api("/api/diag/services"), { empty: "systemctl not available" }); }
+  async function refreshDiagSystem() {
+    const s = await api("/api/diag/system"), t = $("#diag-tiles"); t.innerHTML = "";
+    const thr = s.throttled;
+    t.append(
+      tile("Host", s.hostname, `${s.model || ""} · ${s.os || ""}`),
+      tile("Kernel", s.kernel, `${s.machine} · Python ${s.python}`),
+      tile("Uptime", fmtDur(s.uptime_s), `load ${(s.load || []).join(" ")}`),
+      tile("Memory free", fmtBytes(s.mem_available), `of ${fmtBytes(s.mem_total)}`, s.mem_total && s.mem_available / s.mem_total < 0.1 ? "warning" : "good"),
+      tile("Disk free", fmtBytes(s.disk?.free), `of ${fmtBytes(s.disk?.total)}`, s.disk && s.disk.free / s.disk.total < 0.1 ? "warning" : "good"),
+      tile("Power / thermal", thr == null ? "–" : thr.length ? "flags" : "ok", thr == null ? "vcgencmd not available" : thr.length ? thr.join(", ") : `${s.throttled_raw} · no under-voltage or throttling`, thr == null ? "unknown" : thr.length ? "warning" : "good"),
+      tile("Forwarder", s.forwarder_env?.SX1302_RESET_PIN ? `GPIO ${s.forwarder_env.SX1302_RESET_PIN}` : "–", `${s.global_conf?.gateway_ID ? "EUI " + s.global_conf.gateway_ID : "no global_conf"} · HAL ${s.hal_version || "?"} · syncword ${s.forwarder_env?.LGW_SERVICE_SYNCWORD || "default"}`),
+      tile("GPS source", s.global_conf?.gps_i2c_path || s.global_conf?.gps_tty_path || "none", s.global_conf ? "from global_conf.json" : ""),
+    );
+  }
+  async function refreshDiagLog() {
+    const q = new URLSearchParams({ source: $("#diag-log-src").value || "lora-pkt-fwd", lines: $("#diag-log-lines").value, quiet: $("#diag-log-quiet").checked });
+    if ($("#diag-log-filter").value) q.set("filter", $("#diag-log-filter").value);
+    $("#diag-log-dl").href = `/api/diag/log.txt?${q}`;
+    const r = await api(`/api/diag/log?${q}`), pre = $("#diag-log");
+    const atEnd = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 20;
+    pre.textContent = r.text || "(empty)";
+    if (atEnd || DIAG.follow) pre.scrollTop = pre.scrollHeight;
+  }
+  function setFollow() {
+    clearInterval(DIAG.follow); DIAG.follow = null;
+    if ($("#diag-log-follow").checked) DIAG.follow = setInterval(() => tab === "diag" && refreshDiagLog().catch(console.error), 4000);
+  }
+  $("#diag-log-refresh").onclick = () => refreshDiagLog().catch(console.error);
+  $("#diag-log-src").onchange = $("#diag-log-lines").onchange = $("#diag-log-quiet").onchange = () => refreshDiagLog().catch(console.error);
+  $("#diag-log-filter").onkeydown = (e) => e.key === "Enter" && refreshDiagLog().catch(console.error);
+  $("#diag-log-follow").onchange = setFollow;
+  const kv = (k, v) => el("div", { class: "kv" }, el("b", {}, k), typeof v === "string" ? el("pre", { class: "log short" }, v || "(nothing)") : v);
+  async function refreshDiagHardware() {
+    const h = await api("/api/diag/hardware"), box = $("#diag-hw"); box.innerHTML = "";
+    box.append(
+      kv(`I2C bus 1 (i2cdetect)`, h.i2cdetect),
+      kv(`GPIO (reset pin GPIO ${h.reset_pin}, button 7)`, h.gpio),
+      kv("I2C devices with kernel drivers", Object.entries(h.i2c_drivers || {}).map(([k, v]) => `${k}: ${v}`).join("\n")),
+      kv("Devices", (h.devices || []).join("  ")),
+      kv("LEDs (/sys/class/leds)", (h.leds || []).join("  ")),
+      kv("HAT EEPROM, first 64 bytes", h.eeprom_head || "not readable (at24 driver not bound)"),
+      kv("USB", h.usb || "lsusb not available"),
+    );
+  }
+  $("#diag-hw-refresh").onclick = () => refreshDiagHardware().catch(console.error);
+  async function refreshDiagConfig() { $("#diag-config").textContent = JSON.stringify(await api("/api/diag/config"), null, 2); }
+  function rawFeed(kind, row) {
+    if (DIAG.rawPaused || tab !== "diag") return;
+    const pre = $("#diag-raw");
+    pre.append(`${fmtTime(row.ts || Date.now() / 1000)} ${kind} ${JSON.stringify(row)}\n`);
+    if (++DIAG.rawLines > 300) { pre.textContent = pre.textContent.split("\n").slice(-200).join("\n"); DIAG.rawLines = 200; }
+    pre.scrollTop = pre.scrollHeight;
+  }
+  $("#diag-raw-pause").onchange = (e) => (DIAG.rawPaused = e.target.checked);
+  $("#diag-raw-clear").onclick = () => { $("#diag-raw").textContent = ""; DIAG.rawLines = 0; };
+  async function refreshDiag() {
+    if (!DIAG.srcReady) {
+      const sel = $("#diag-log-src");
+      for (const s of ["lora-pkt-fwd", "lorarepeater", "lorarepeater-gps-bridge", "gpsd", "chrony", "meshtasticd", "kernel", "all"]) sel.append(el("option", { value: s }, s));
+      DIAG.srcReady = true;
+    }
+    await Promise.all([refreshDiagSystem(), refreshDiagServices(), refreshDiagLog(), refreshDiagHardware(), refreshDiagConfig()].map((p) => p.catch(console.error)));
+  }
+
   // bucket helpers: fill gaps so bars are evenly spaced in time
   function fill(rows, bucket, h, keys) {
     const now = Math.floor(Date.now() / 1000 / bucket) * bucket, start = now - h * 3600 + bucket;
@@ -356,12 +447,13 @@
       if (kind === "lorawan_packets") { if (tab === "overview") prepend($("#ov-lw"), LW_COLS.slice(0, 11), row); if (tab === "lorawan") prepend($("#lw-log"), LW_COLS, row); }
       if (kind === "mesh_packets") { if (tab === "overview") prepend($("#ov-mesh"), MESH_COLS.slice(0, 9).concat(MESH_COLS.slice(-1)), row); if (tab === "mesh") { prepend($("#mesh-log"), MESH_COLS, row); if (row.text) { const b = $("#mesh-msgs"); b.querySelector(".empty")?.remove(); b.prepend(msgEl(row)); } } }
       if (kind === "events" && tab === "events") prepend($("#events"), EVENT_COLS, row);
+      rawFeed(kind, row);
     };
     setInterval(() => ws.readyState === 1 && ws.send("ping"), 30000);
   }
 
   // ---------------------------------------------------------------- orchestration
-  const refreshTab = (name) => ({ overview: refreshOverview, lorawan: refreshLorawan, mesh: refreshMesh, gps: refreshGps, events: refreshEvents }[name]().catch(console.error));
+  const refreshTab = (name) => ({ overview: refreshOverview, lorawan: refreshLorawan, mesh: refreshMesh, gps: refreshGps, events: refreshEvents, diag: refreshDiag }[name]().catch(console.error));
   async function refreshAll() { try { await refreshStatus(); await refreshTab(tab); } catch (e) { console.error(e); } }
   showTab(tab);
   refreshStatus().catch(console.error);

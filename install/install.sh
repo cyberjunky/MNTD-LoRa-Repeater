@@ -205,6 +205,7 @@ rsync -a --delete "$REPO_DIR/web/" "$INSTALL_DIR/web/" 2>/dev/null || cp -r "$RE
 chown -R lorarepeater:lorarepeater "$DATA_DIR" "$CONF_DIR"
 install -m 644 "$REPO_DIR/install/systemd/"*.service /etc/systemd/system/
 install -m 644 "$REPO_DIR/install/systemd/lorarepeater.tmpfiles" /etc/tmpfiles.d/lorarepeater.conf
+install -m 644 "$REPO_DIR/install/polkit/10-lorarepeater.rules" /etc/polkit-1/rules.d/10-lorarepeater.rules
 systemd-tmpfiles --create /etc/tmpfiles.d/lorarepeater.conf
 systemctl daemon-reload
 SERVICES="lora-pkt-fwd lorarepeater"
