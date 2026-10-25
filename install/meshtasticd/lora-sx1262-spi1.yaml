@@ -1,0 +1,22 @@
+# Hand-wired SX1262 module (e.g. Waveshare Core1262-868M) on the Pi 4's SPI1, which is free
+# with the RAK HAT. Enable SPI1 with `dtoverlay=spi1-1cs,cs0_pin=18` in config.txt.
+# Pin choices avoid everything the RAK HAT uses (see docs/hardware.md).
+#
+#   SX1262   Pi 4 BCM   header pin
+#   MOSI     GPIO 20    38
+#   MISO     GPIO 19    35
+#   SCK      GPIO 21    40
+#   NSS      GPIO 18    12
+#   DIO1     GPIO 22    15   (IRQ)
+#   BUSY     GPIO 23    16
+#   RESET    GPIO 24    18
+#   3V3/GND  pins 17/39
+Lora:
+  Module: sx1262
+  spidev: spidev1.0
+  CS: 18
+  IRQ: 22
+  Busy: 23
+  Reset: 24
+  DIO2_AS_RF_SWITCH: true
+  DIO3_TCXO_VOLTAGE: true

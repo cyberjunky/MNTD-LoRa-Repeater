@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MNTD LoRa Repeater</title>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='5' fill='%232a78d6'/><path d='M8 8a11 11 0 0 0 0 16M24 8a11 11 0 0 1 0 16' stroke='%232a78d6' stroke-width='2.5' fill='none' stroke-linecap='round'/></svg>">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="dot" id="health-dot"></span><h1 id="title">MNTD LoRa Repeater</h1></div>
+  <nav class="tabs" id="tabs">
+    <button data-tab="overview" class="active">Overview</button>
+    <button data-tab="lorawan">LoRaWAN</button>
+    <button data-tab="mesh">Meshtastic</button>
+    <button data-tab="gps">GPS &amp; time</button>
+    <button data-tab="events">Events</button>
+  </nav>
+  <div class="controls">
+    <label>Range
+      <select id="range">
+        <option value="6">6 h</option>
+        <option value="24" selected>24 h</option>
+        <option value="168">7 d</option>
+        <option value="720">30 d</option>
+      </select>
+    </label>
+    <button id="theme" title="Toggle light/dark">◐</button>
+    <span class="live" id="live">● live</span>
+  </div>
+</header>
+
+<main>
+  <!-- ============================ OVERVIEW ============================ -->
+  <section id="tab-overview" class="tab active">
+    <div class="tiles" id="tiles"></div>
+    <div class="grid2">
+      <figure class="card"><figcaption>LoRaWAN packets <span class="muted" id="lw-range"></span></figcaption><div class="chart" id="chart-lw-time"></div></figure>
+      <figure class="card"><figcaption>Meshtastic packets <span class="muted" id="mesh-range"></span></figcaption><div class="chart" id="chart-mesh-time"></div></figure>
+    </div>
+    <div class="grid2">
+      <div class="card"><h3>Latest LoRaWAN</h3><table class="tbl compact" id="ov-lw"></table></div>
+      <div class="card"><h3>Latest Meshtastic</h3><table class="tbl compact" id="ov-mesh"></table></div>
+    </div>
+  </section>
+
+  <!-- ============================ LORAWAN ============================= -->
+  <section id="tab-lorawan" class="tab">
+    <div class="tiles" id="lw-tiles"></div>
+    <div class="grid2">
+      <figure class="card"><figcaption>Uplinks per channel (count, mean RSSI)</figcaption><div class="chart" id="chart-lw-freq"></div></figure>
+      <figure class="card"><figcaption>Uplinks by data rate</figcaption><div class="chart" id="chart-lw-datr"></div></figure>
+    </div>
+    <div class="card"><h3>Upstream networks</h3><table class="tbl" id="lw-upstreams"></table></div>
+    <div class="card"><h3>Devices seen (by DevAddr)</h3><table class="tbl" id="lw-devices"></table></div>
+    <div class="card">
+      <div class="row"><h3>Packet log</h3>
+        <label>Direction <select id="lw-dir"><option value="">all</option><option value="up">up</option><option value="down">down</option></select></label>
+        <label>DevAddr <input id="lw-devaddr" placeholder="26011A2B" size="10"></label>
+        <button id="lw-more">Older</button></div>
+      <table class="tbl" id="lw-log"></table>
+    </div>
+  </section>
+
+  <!-- ============================ MESHTASTIC ========================== -->
+  <section id="tab-mesh" class="tab">
+    <div class="tiles" id="mesh-tiles"></div>
+    <div class="grid2">
+      <figure class="card"><figcaption>Packets by port</figcaption><div class="chart" id="chart-mesh-port"></div></figure>
+      <figure class="card"><figcaption>Hops used before reaching us</figcaption><div class="chart" id="chart-mesh-hops"></div></figure>
+    </div>
+    <div class="card"><h3>Messages</h3><div class="msgs" id="mesh-msgs"></div></div>
+    <div class="card"><h3>Nodes</h3><table class="tbl" id="mesh-nodes"></table></div>
+    <div class="card">
+      <div class="row"><h3>Packet log</h3>
+        <label>Port <select id="mesh-port"><option value="">all</option></select></label>
+        <button id="mesh-more">Older</button></div>
+      <table class="tbl" id="mesh-log"></table>
+    </div>
+  </section>
+
+  <!-- ============================ GPS ================================= -->
+  <section id="tab-gps" class="tab">
+    <div class="tiles" id="gps-tiles"></div>
+    <div class="grid2">
+      <figure class="card"><figcaption>Satellites used / seen</figcaption><div class="chart" id="chart-gps-sats"></div></figure>
+      <figure class="card"><figcaption>System clock offset vs reference (ms)</figcaption><div class="chart" id="chart-gps-offset"></div></figure>
+    </div>
+    <div class="card"><h3>chrony sources</h3><table class="tbl" id="gps-sources"></table></div>
+    <div class="card"><h3>Position</h3><p id="gps-pos" class="mono"></p></div>
+  </section>
+
+  <!-- ============================ EVENTS ============================== -->
+  <section id="tab-events" class="tab">
+    <div class="card"><h3>Service events</h3><table class="tbl" id="events"></table></div>
+  </section>
+</main>
+<div id="tooltip" class="tooltip" hidden></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+[Unit]
+Description=lorarepeater: LoRaWAN mux, Meshtastic logger, web GUI
+After=network.target lora-pkt-fwd.service gpsd.service
+Wants=lora-pkt-fwd.service
+
+[Service]
+Type=simple
+User=lorarepeater
+Group=lorarepeater
+SupplementaryGroups=i2c gpio
+WorkingDirectory=/var/lib/lorarepeater
+ExecStart=/opt/lorarepeater/venv/bin/lorarepeater serve --config /etc/lorarepeater/config.yaml
+Restart=always
+RestartSec=5
+# led.py writes /sys/class/leds/*/brightness; allow it
+ReadWritePaths=/var/lib/lorarepeater /sys/class/leds
+ProtectSystem=full
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

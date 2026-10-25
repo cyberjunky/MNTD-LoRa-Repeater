@@ -1,0 +1,234 @@
+#!/usr/bin/env bash
+# MNTD Goldspot -> LoRaWAN + Meshtastic repeater installer.
+#
+# Run on a fresh Raspberry Pi OS Lite 64-bit (Bookworm or Trixie) as a user with sudo:
+#     git clone https://github.com/<you>/MNTD-Lora-Repeater.git
+#     cd MNTD-Lora-Repeater && sudo install/install.sh
+#
+# Idempotent: safe to re-run. Environment overrides:
+#     RESET_PIN=25|17|auto   SX1302 reset GPIO (default auto: probe 25 then 17)
+#     GPS_MODE=i2c|uart|off  how the RAK2287 GPS is reached (default auto-detect)
+#     MESH=meshstick|serial|none   Meshtastic radio (default none)
+#     MESH_ROLE=ROUTER_LATE  Meshtastic device role
+#     SKIP_MESH_INSTALL=1    do not add the meshtasticd apt repo
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+INSTALL_DIR=/opt/lorarepeater
+HAL_DIR=/opt/sx1302_hal
+HAL_TAG="${HAL_TAG:-V2.1.0}"
+CONF_DIR=/etc/lorarepeater
+DATA_DIR=/var/lib/lorarepeater
+BOOT_CFG=/boot/firmware/config.txt
+[ -f "$BOOT_CFG" ] || BOOT_CFG=/boot/config.txt
+RESET_PIN="${RESET_PIN:-auto}"
+GPS_MODE="${GPS_MODE:-auto}"
+MESH="${MESH:-none}"
+MESH_ROLE="${MESH_ROLE:-ROUTER_LATE}"
+
+log()  { printf '\n\033[1;32m==> %s\033[0m\n' "$*"; }
+warn() { printf '\033[1;33m!!  %s\033[0m\n' "$*"; }
+die()  { printf '\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
+
+[ "$(id -u)" -eq 0 ] || die "run with sudo"
+grep -q "Raspberry Pi 4" /proc/device-tree/model 2>/dev/null || warn "this does not look like a Raspberry Pi 4; continuing anyway"
+[ "$(uname -m)" = "aarch64" ] || die "64-bit OS required (uname -m = $(uname -m))"
+
+# ------------------------------------------------------------------------------------------
+log "1/9 apt packages"
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -q
+apt-get install -y -q git build-essential python3 python3-venv python3-dev i2c-tools \
+    gpiod chrony gpsd gpsd-clients device-tree-compiler jq curl ca-certificates
+
+# ------------------------------------------------------------------------------------------
+log "2/9 boot config ($BOOT_CFG): SPI, I2C, UART, LED overlay"
+ensure_line() { grep -qxF "$1" "$BOOT_CFG" || echo "$1" >> "$BOOT_CFG"; }
+cp -n "$BOOT_CFG" "$BOOT_CFG.lorarepeater.bak" || true
+sed -i -E 's/^#?dtparam=spi=.*/dtparam=spi=on/; s/^#?dtparam=i2c_arm=.*/dtparam=i2c_arm=on/' "$BOOT_CFG"
+grep -q '^dtparam=spi=on' "$BOOT_CFG" || echo 'dtparam=spi=on' >> "$BOOT_CFG"
+grep -q '^dtparam=i2c_arm=on' "$BOOT_CFG" || echo 'dtparam=i2c_arm=on' >> "$BOOT_CFG"
+ensure_line "enable_uart=1"
+ensure_line "dtparam=watchdog=on"
+# Front LED: TI LP5562 at 0x30 (custom overlay, there is none in Raspberry Pi OS)
+dtc -@ -I dts -O dtb -o /boot/firmware/overlays/lp5562.dtbo "$REPO_DIR/install/overlays/lp5562.dts" 2>/dev/null \
+    || dtc -@ -I dts -O dtb -o /boot/overlays/lp5562.dtbo "$REPO_DIR/install/overlays/lp5562.dts"
+ensure_line "dtoverlay=lp5562"
+# HAT EEPROM (24C32 at 0x50), read-only informational
+ensure_line "dtoverlay=at24,eeprom=24c32,addr=0x50"
+modprobe i2c-dev 2>/dev/null || true
+grep -qxF i2c-dev /etc/modules || echo i2c-dev >> /etc/modules
+
+# ------------------------------------------------------------------------------------------
+log "3/9 hardware detection"
+I2C_DETECT="$(i2cdetect -y 1 2>/dev/null || true)"
+have_i2c() { echo "$I2C_DETECT" | grep -qiE "(^| )$1( |$)"; }
+HAVE_GPS=0; HAVE_ECC=0; HAVE_EEPROM=0; HAVE_LED=0
+have_i2c 42 && HAVE_GPS=1
+have_i2c 60 && HAVE_ECC=1
+(have_i2c 50 || have_i2c UU && [ -e /sys/bus/i2c/devices/1-0050/eeprom ]) && HAVE_EEPROM=1
+(have_i2c 30 || echo "$I2C_DETECT" | grep -q "30: UU") && HAVE_LED=1
+echo "I2C: gps=$HAVE_GPS ecc608=$HAVE_ECC eeprom=$HAVE_EEPROM lp5562=$HAVE_LED"
+if [ "$RESET_PIN" = "auto" ]; then
+    # Stock firmware logic: EEPROM present -> rakspot_v3 -> GPIO 25, otherwise GPIO 17.
+    # The chip-id probe in step 5 verifies this and falls back to the other pin.
+    RESET_PIN=$([ "$HAVE_EEPROM" = 1 ] && echo 25 || echo 17)
+fi
+echo "SX1302 reset pin candidate: GPIO $RESET_PIN"
+
+# ------------------------------------------------------------------------------------------
+log "4/9 Semtech sx1302_hal $HAL_TAG (packet forwarder) in $HAL_DIR"
+if [ ! -d "$HAL_DIR/.git" ]; then
+    git clone --depth 1 --branch "$HAL_TAG" https://github.com/Lora-net/sx1302_hal.git "$HAL_DIR"
+fi
+python3 "$REPO_DIR/install/patch_sx1302_hal.py" "$HAL_DIR"
+make -C "$HAL_DIR" -j"$(nproc)" >/tmp/sx1302_hal.build.log 2>&1 || { tail -30 /tmp/sx1302_hal.build.log; die "sx1302_hal build failed"; }
+install -m 755 "$REPO_DIR/install/bin/reset_lgw.sh" "$HAL_DIR/packet_forwarder/reset_lgw.sh"
+install -m 755 "$REPO_DIR/install/bin/reset_lgw.sh" "$HAL_DIR/util_chip_id/reset_lgw.sh"
+install -m 755 "$REPO_DIR/install/bin/reset_lgw.sh" /usr/local/bin/reset_lgw.sh
+
+# ------------------------------------------------------------------------------------------
+log "5/9 probing the concentrator"
+probe_pin() {
+    SX1302_RESET_PIN="$1" /usr/local/bin/reset_lgw.sh start >/dev/null 2>&1 || return 1
+    (cd "$HAL_DIR/util_chip_id" && SX1302_RESET_PIN="$1" timeout 20 ./chip_id -d /dev/spidev0.0 2>&1 | tee /tmp/chip_id.log | grep -q "concentrator EUI")
+}
+if probe_pin "$RESET_PIN"; then
+    echo "SX1302 answers with reset on GPIO $RESET_PIN"
+else
+    OTHER=$([ "$RESET_PIN" = 25 ] && echo 17 || echo 25)
+    warn "no answer with GPIO $RESET_PIN, trying GPIO $OTHER"
+    if probe_pin "$OTHER"; then RESET_PIN=$OTHER; echo "SX1302 answers with reset on GPIO $RESET_PIN"
+    else warn "concentrator did not answer on either pin (see /tmp/chip_id.log); continuing with GPIO $RESET_PIN"; fi
+fi
+GW_EUI="$(grep -o 'EUI: 0x[0-9A-Fa-f]*' /tmp/chip_id.log 2>/dev/null | head -1 | sed 's/EUI: 0x//' | tr a-f A-F || true)"
+if [ -z "$GW_EUI" ]; then
+    MAC="$(cat /sys/class/net/eth0/address | tr -d ':' | tr a-f A-F)"
+    GW_EUI="${MAC:0:6}FFFE${MAC:6:6}"
+fi
+echo "Gateway EUI: $GW_EUI"
+echo "SX1302_RESET_PIN=$RESET_PIN" > /etc/default/lora-pkt-fwd
+
+# ------------------------------------------------------------------------------------------
+log "6/9 GPS: I2C bridge, gpsd, chrony"
+mkdir -p "$CONF_DIR" "$DATA_DIR" /run/lorarepeater
+if [ "$GPS_MODE" = "auto" ]; then
+    if [ "$HAVE_GPS" = 1 ]; then GPS_MODE=i2c
+    elif timeout 4 cat /dev/ttyS0 2>/dev/null | grep -q '^\$G'; then GPS_MODE=uart
+    else GPS_MODE=off; fi
+fi
+echo "GPS mode: $GPS_MODE"
+case "$GPS_MODE" in
+    i2c)  GPS_TTY_PKTFWD=/run/lorarepeater/gps-pktfwd; GPS_TTY_GPSD=/run/lorarepeater/gps-gpsd ;;
+    uart) GPS_TTY_PKTFWD=/dev/ttyS0; GPS_TTY_GPSD=/dev/ttyS0; warn "UART GPS: gpsd and lora_pkt_fwd will share /dev/ttyS0; prefer i2c" ;;
+    *)    GPS_TTY_PKTFWD=""; GPS_TTY_GPSD="" ;;
+esac
+cat > /etc/default/gpsd <<EOF
+# written by lorarepeater install.sh
+START_DAEMON="true"
+USBAUTO="false"
+DEVICES="$GPS_TTY_GPSD"
+GPSD_OPTIONS="-n"
+EOF
+install -m 644 "$REPO_DIR/install/chrony/lorarepeater.conf" /etc/chrony/conf.d/lorarepeater.conf 2>/dev/null \
+    || install -m 644 "$REPO_DIR/install/chrony/lorarepeater.conf" /etc/chrony/chrony.d/lorarepeater.conf 2>/dev/null || true
+
+# ------------------------------------------------------------------------------------------
+log "7/9 packet forwarder configuration"
+python3 - "$REPO_DIR/reference/original-firmware/etc/lorawan/sx1302/global_conf.json.sx1250.EU868" \
+          "$CONF_DIR/global_conf.json" "$GW_EUI" "$GPS_TTY_PKTFWD" <<'PY'
+import json, re, sys
+src, dst, eui, gps_tty = sys.argv[1:5]
+raw = open(src).read()
+raw = re.sub(r"/\*.*?\*/", "", raw, flags=re.S)
+raw = re.sub(r"//[^\n]*", "", raw)
+c = json.loads(raw)
+sx = c["SX130x_conf"]
+# sx1302_hal 2.x renamed spidev_path -> com_type/com_path
+sx.pop("spidev_path", None)
+sx["com_type"] = "SPI"
+sx["com_path"] = "/dev/spidev0.0"
+g = c["gateway_conf"]
+g.pop("gps_i2c_path", None)
+g["gateway_ID"] = eui
+g["server_address"] = "127.0.0.1"
+g["serv_port_up"] = 1730
+g["serv_port_down"] = 1730
+if gps_tty:
+    g["gps_tty_path"] = gps_tty
+    g["fake_gps"] = False
+else:
+    g["gps_tty_path"] = ""
+    g["fake_gps"] = False
+g.setdefault("stat_interval", 30)
+g.setdefault("keepalive_interval", 10)
+json.dump(c, open(dst, "w"), indent=4)
+print("wrote", dst)
+PY
+ln -sf "$CONF_DIR/global_conf.json" "$HAL_DIR/packet_forwarder/global_conf.json"
+
+# ------------------------------------------------------------------------------------------
+log "8/9 lorarepeater backend in $INSTALL_DIR"
+id -u lorarepeater >/dev/null 2>&1 || useradd -r -s /usr/sbin/nologin -d "$DATA_DIR" -G i2c,spi,gpio,dialout lorarepeater 2>/dev/null \
+    || useradd -r -s /usr/sbin/nologin -d "$DATA_DIR" lorarepeater
+for grp in i2c spi gpio dialout; do getent group "$grp" >/dev/null && usermod -aG "$grp" lorarepeater; done
+mkdir -p "$INSTALL_DIR"
+rsync -a --delete --exclude .venv "$REPO_DIR/backend/" "$INSTALL_DIR/backend/" 2>/dev/null || cp -r "$REPO_DIR/backend/." "$INSTALL_DIR/backend/"
+rsync -a --delete "$REPO_DIR/web/" "$INSTALL_DIR/web/" 2>/dev/null || cp -r "$REPO_DIR/web/." "$INSTALL_DIR/web/"
+[ -d "$INSTALL_DIR/venv" ] || python3 -m venv "$INSTALL_DIR/venv"
+"$INSTALL_DIR/venv/bin/pip" install -q --upgrade pip
+"$INSTALL_DIR/venv/bin/pip" install -q "$INSTALL_DIR/backend[mesh]"
+[ -f "$CONF_DIR/config.yaml" ] || sed -e "s#__DATA_DIR__#$DATA_DIR#" "$REPO_DIR/install/config.example.yaml" > "$CONF_DIR/config.yaml"
+chown -R lorarepeater:lorarepeater "$DATA_DIR" "$CONF_DIR"
+install -m 644 "$REPO_DIR/install/systemd/"*.service /etc/systemd/system/
+install -m 644 "$REPO_DIR/install/systemd/lorarepeater.tmpfiles" /etc/tmpfiles.d/lorarepeater.conf
+systemd-tmpfiles --create /etc/tmpfiles.d/lorarepeater.conf
+systemctl daemon-reload
+SERVICES="lora-pkt-fwd lorarepeater"
+if [ "$GPS_MODE" = i2c ]; then SERVICES="lorarepeater-gps-bridge $SERVICES"; fi
+systemctl enable $SERVICES chrony gpsd >/dev/null
+if [ "$GPS_MODE" = off ]; then systemctl disable --now gpsd lorarepeater-gps-bridge 2>/dev/null || true; fi
+
+# ------------------------------------------------------------------------------------------
+log "9/9 Meshtastic ($MESH)"
+if [ "$MESH" != "none" ] && [ "${SKIP_MESH_INSTALL:-0}" != 1 ]; then
+    . /etc/os-release
+    DEB="Debian_${VERSION_ID:-12}"
+    curl -fsSL "https://download.opensuse.org/repositories/network:/Meshtastic:/beta/$DEB/Release.key" \
+        | gpg --dearmor -o /etc/apt/trusted.gpg.d/network_Meshtastic_beta.gpg --yes
+    echo "deb http://download.opensuse.org/repositories/network:/Meshtastic:/beta/$DEB/ /" > /etc/apt/sources.list.d/network:Meshtastic:beta.list
+    apt-get update -q && apt-get install -y -q meshtasticd
+    mkdir -p /etc/meshtasticd/config.d
+    case "$MESH" in
+        meshstick)
+            cp /etc/meshtasticd/available.d/lora-usb-meshstick-1262.yaml /etc/meshtasticd/config.d/ 2>/dev/null \
+                || cp "$REPO_DIR/install/meshtasticd/lora-usb-meshstick-1262.yaml" /etc/meshtasticd/config.d/ ;;
+        serial)
+            warn "MESH=serial: a standalone node on USB serial; meshtasticd not configured for a radio, backend uses the serial port" ;;
+    esac
+    install -m 644 "$REPO_DIR/install/meshtasticd/config.yaml" /etc/meshtasticd/config.yaml
+    systemctl enable --now meshtasticd
+    sleep 8
+    "$INSTALL_DIR/venv/bin/meshtastic" --host 127.0.0.1 --set lora.region EU_868 --set device.role "$MESH_ROLE" \
+        --set lora.hop_limit 3 --set-owner "MNTD Repeater" 2>/dev/null || warn "could not set Meshtastic role yet; run: meshtastic --host 127.0.0.1 --set device.role $MESH_ROLE"
+    if [ "$MESH" = serial ]; then
+        sed -i 's/^\(\s*\)transport: tcp/\1transport: serial/' "$CONF_DIR/config.yaml"
+    fi
+else
+    sed -i 's/^\(\s*\)enabled: true\s*# mesh/\1enabled: false  # mesh/' "$CONF_DIR/config.yaml" || true
+fi
+
+log "done"
+cat <<EOF
+
+  Reset pin      : GPIO $RESET_PIN  (/etc/default/lora-pkt-fwd)
+  Gateway EUI    : $GW_EUI
+  GPS            : $GPS_MODE
+  Forwarder conf : $CONF_DIR/global_conf.json
+  Backend conf   : $CONF_DIR/config.yaml   (add your LoRaWAN network servers under gwmp.upstreams)
+  Web GUI        : http://$(hostname -I 2>/dev/null | awk '{print $1}'):8080/
+  Meshtastic web : https://$(hostname -I 2>/dev/null | awk '{print $1}'):9443/   (if MESH != none)
+
+Reboot now so the boot overlays take effect:   sudo reboot
+Then check:  systemctl status lora-pkt-fwd lorarepeater gpsd chrony ; chronyc sources ; gpspipe -w -n 5
+EOF

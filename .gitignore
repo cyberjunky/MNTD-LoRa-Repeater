@@ -1,0 +1,39 @@
+# Original firmware image is 385 MB; keep it out of git (document the download instead)
+firmware/*.zip
+firmware/*.img
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+
+# Runtime data
+*.db
+*.db-journal
+*.sqlite
+data/
+logs/
+
+# Secrets and local config
+.env
+*.pem
+*.key
+*.crt
+config.local.yaml
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Claude Code local state
+.claude/
+.agents/
+skills-lock.json
+
+# Full extraction of the stock firmware
+firmware/extracted/

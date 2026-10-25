@@ -1,0 +1,45 @@
+# lorarepeater configuration (/etc/lorarepeater/config.yaml)
+db_path: __DATA_DIR__/lorarepeater.db
+retention_days: 90
+
+gwmp:
+  # Where lora_pkt_fwd sends its traffic (matches global_conf.json server_address/ports)
+  listen_host: 127.0.0.1
+  listen_port: 1730
+  # Leave empty to use the EUI the forwarder reports
+  gateway_eui: ""
+  pull_interval_s: 10
+  # LoRaWAN network servers to fan out to. All receive every uplink; the first to answer
+  # a downlink slot wins. Set rx_only: true to log but never transmit for that network.
+  upstreams: []
+  #  - name: chirpstack
+  #    host: 192.168.1.10
+  #    port: 1700
+  #  - name: ttn
+  #    host: eu1.cloud.thethings.network
+  #    port: 1700
+  #  - name: helium
+  #    host: 127.0.0.1      # helium gateway-rs listening on 1680
+  #    port: 1680
+
+mesh:
+  enabled: true  # mesh
+  transport: tcp          # tcp = meshtasticd on this box, serial = USB node
+  host: 127.0.0.1
+  port: 4403
+  device: /dev/ttyACM0
+  reconnect_s: 15
+
+gps:
+  enabled: true
+  gpsd_host: 127.0.0.1
+  gpsd_port: 2947
+  sample_interval_s: 60
+
+web:
+  host: 0.0.0.0
+  port: 8080
+  title: MNTD LoRa Repeater
+
+hardware:
+  led_enabled: true

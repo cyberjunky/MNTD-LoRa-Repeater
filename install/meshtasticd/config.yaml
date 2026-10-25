@@ -1,0 +1,13 @@
+# /etc/meshtasticd/config.yaml for the MNTD repeater.
+# The radio definition lives in config.d/ (install.sh copies the MeshStick preset there).
+# For a hand-wired SX1262 on SPI1 see install/meshtasticd/lora-sx1262-spi1.yaml.
+
+Webserver:
+  Port: 9443
+  RootPath: /usr/share/meshtasticd/web
+
+General:
+  MaxNodes: 200
+  MaxMessageQueue: 100
+  # APIPort: 4403
+  MACAddressSource: eth0

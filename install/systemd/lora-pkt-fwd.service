@@ -1,0 +1,20 @@
+[Unit]
+Description=Semtech SX1302 LoRa packet forwarder (RAK2287)
+After=network.target lorarepeater-gps-bridge.service
+Wants=lorarepeater-gps-bridge.service
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/lora-pkt-fwd
+WorkingDirectory=/opt/sx1302_hal/packet_forwarder
+ExecStartPre=/usr/local/bin/reset_lgw.sh start
+ExecStart=/opt/sx1302_hal/packet_forwarder/lora_pkt_fwd -c /etc/lorarepeater/global_conf.json
+ExecStopPost=/usr/local/bin/reset_lgw.sh stop
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=lora_pkt_fwd
+
+[Install]
+WantedBy=multi-user.target

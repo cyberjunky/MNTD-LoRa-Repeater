@@ -1,0 +1,2 @@
+d /run/lorarepeater 0755 root root -
+d /var/lib/lorarepeater 0750 lorarepeater lorarepeater -
