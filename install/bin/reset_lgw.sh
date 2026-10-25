@@ -8,9 +8,12 @@
 #
 # Same pulse as the stock firmware: low 100 ms, high 100 ms, low 100 ms.
 
+# environment first, then /etc/default/lora-pkt-fwd, then the rakspot_v3 default
+ENV_PIN="$SX1302_RESET_PIN"
+ENV_CHIP="$SX1302_RESET_CHIP"
 [ -r /etc/default/lora-pkt-fwd ] && . /etc/default/lora-pkt-fwd
-PIN="${SX1302_RESET_PIN:-25}"
-CHIP="${SX1302_RESET_CHIP:-gpiochip0}"
+PIN="${ENV_PIN:-${SX1302_RESET_PIN:-25}}"
+CHIP="${ENV_CHIP:-${SX1302_RESET_CHIP:-gpiochip0}}"
 
 # The line must stay driven after this script exits (the SX1302 is held in reset while it is
 # high). pinctrl and sysfs leave the pin configured; gpioset releases it on exit, so it is the
