@@ -1,6 +1,4 @@
-<p align="center"><img src="web/icon.svg" width="96" alt="MNTD LoRa Repeater icon"></p>
-
-# MNTD LoRa Repeater
+# MNTD LoRa Repeater <img src="web/icon.svg" width="80" align="right" alt="MNTD LoRa Repeater icon">
 
 Give a retired **MNTD Goldspot / RAK Hotspot Miner V2** Helium hotspot a second life as a
 **LoRaWAN gateway + Meshtastic repeater** with a Python backend, a database of everything it
