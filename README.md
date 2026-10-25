@@ -30,8 +30,9 @@ install script replaces it.
 
 ```sh
 # on a fresh Raspberry Pi OS Lite 64-bit
-git clone https://github.com/<you>/MNTD-Lora-Repeater.git
-cd MNTD-Lora-Repeater
+sudo apt install -y git
+git clone https://github.com/cyberjunky/MNTD-LoRa-Repeater.git
+cd MNTD-LoRa-Repeater
 sudo install/install.sh                    # MESH=meshstick for a USB SX1262, MESH=none for LoRaWAN only
 sudo reboot
 ```

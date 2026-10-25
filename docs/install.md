@@ -25,8 +25,8 @@ The Pi 4's bootloader is stock; nothing on the board is locked.
 
 ```sh
 sudo apt install -y git
-git clone https://github.com/<you>/MNTD-Lora-Repeater.git
-cd MNTD-Lora-Repeater
+git clone https://github.com/cyberjunky/MNTD-LoRa-Repeater.git
+cd MNTD-LoRa-Repeater
 sudo install/install.sh
 sudo reboot
 ```
