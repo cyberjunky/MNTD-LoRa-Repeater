@@ -24,26 +24,10 @@ from .timesync import TimeSync
 
 log = logging.getLogger(__name__)
 
-# Where the GUI files live when installed by install/install.sh, and when run from a repo checkout.
-# The package itself is pip-installed into a venv, so a path relative to __file__ only works for the latter.
-WEB_DIR_CANDIDATES = (
-    Path("/opt/lorarepeater/web"),
-    Path(__file__).resolve().parent.parent.parent / "web",
-)
-
-
-def find_web_dir(configured: Path | None) -> Path | None:
-    """Return the first existing GUI folder: the configured one, else one of WEB_DIR_CANDIDATES."""
-    for cand in ((configured,) if configured else WEB_DIR_CANDIDATES):
-        if cand.is_dir() and (cand / "index.html").is_file():
-            return cand
-    return None
-
-
 def _read_cpu_temp(path: str) -> float | None:
     try:
         return int(Path(path).read_text().strip()) / 1000.0
-    except Exception:
+    except OSError:              # no thermal zone (not a Pi)
         return None
 
 
@@ -203,10 +187,7 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync,
         rows = await db.fetch(f"SELECT * FROM mesh_packets WHERE {' AND '.join(where)} ORDER BY id DESC LIMIT ?", params)
         for r in rows:
             if r.get("payload"):
-                try:
-                    r["payload"] = json.loads(r["payload"])
-                except Exception:
-                    pass
+                r["payload"] = json.loads(r["payload"])
         return rows
 
     @app.get("/api/mesh/nodes")
@@ -263,9 +244,8 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync,
 
     # -- static GUI -------------------------------------------------------------------
 
-    web_dir = find_web_dir(cfg.web.dir)
-    if web_dir:
-        log.info("serving GUI from %s", web_dir)
+    web_dir = cfg.web.dir
+    if web_dir.is_dir():
 
         @app.get("/", include_in_schema=False)
         async def index() -> FileResponse:
@@ -281,7 +261,6 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync,
                 response.headers["Cache-Control"] = "no-cache"
             return response
     else:
-        log.warning("no web directory found (web.dir=%s, tried %s); GUI disabled",
-                    cfg.web.dir, ", ".join(str(c) for c in WEB_DIR_CANDIDATES))
+        log.warning("web.dir %s not found; GUI disabled", web_dir)
 
     return app

@@ -86,36 +86,10 @@ def fail(what: str) -> int:
     return 1
 
 
-def _read(path: Path) -> tuple[str, str]:
-    """Return (text with LF newlines, the file's own newline string) so CRLF sources stay CRLF."""
-    raw = path.read_text(encoding="utf-8", newline="")
-    eol = "\r\n" if "\r\n" in raw else "\n"
-    return raw.replace("\r\n", "\n"), eol
-
-
-def _write(path: Path, src: str, eol: str) -> None:
-    path.write_text(src.replace("\n", eol), encoding="utf-8", newline="")
-
-
-def _patch_hal_stop(src: str) -> tuple[str, bool]:
-    """lgw_stop() closes the temperature sensor fd unconditionally; with no sensor it is -1 and
-    close() fails, which makes lgw_stop() return an error. Skip the close in that case."""
-    old = "x = i2c_linuxdev_close(ts_fd);"
-    if old not in src:
-        return src, False
-    return src.replace(old, "x = (ts_fd >= 0) ? i2c_linuxdev_close(ts_fd) : 0; /* " + MARK + ": no sensor */", 1), True
-
-
 def patch_hal_c(path: Path) -> int:
-    src, eol = _read(path)
-    if "ts_fake" in src:
-        # main patch present (earlier versions did not include the lgw_stop fix)
-        src, changed = _patch_hal_stop(src)
-        if changed:
-            _write(path, src, eol)
-            print("patched (lgw_stop fix):", path)
-        else:
-            print("already patched:", path)
+    src = path.read_text(encoding="utf-8")
+    if MARK in src:
+        print("already patched:", path)
         return 0
     m = re.search(r"^static uint8_t ts_addr = 0xFF;.*$", src, re.M)
     if not m:
@@ -140,16 +114,18 @@ def patch_hal_c(path: Path) -> int:
     )
     if n != 1:
         return fail("lgw_get_temperature definition")
-    src, ok = _patch_hal_stop(src)
-    if not ok:
+    # lgw_stop() closes the sensor fd unconditionally; with no sensor it is -1 and the close fails
+    old = "x = i2c_linuxdev_close(ts_fd);"
+    if old not in src:
         return fail("temperature sensor close in lgw_stop")
-    _write(path, src, eol)
+    src = src.replace(old, "x = (ts_fd >= 0) ? i2c_linuxdev_close(ts_fd) : 0; /* " + MARK + ": no sensor */", 1)
+    path.write_text(src, encoding="utf-8")
     print("patched:", path)
     return 0
 
 
 def patch_sx1302_c(path: Path) -> int:
-    src, eol = _read(path)
+    src = path.read_text(encoding="utf-8")
     if MARK in src:
         print("already patched:", path)
         return 0
@@ -168,7 +144,7 @@ def patch_sx1302_c(path: Path) -> int:
     if not m:
         return fail("TX syncword block in sx1302_send")
     src = src[: m.start()] + TX_NEW.format(ind=m.group("ind")) + src[m.end():]
-    _write(path, src, eol)
+    path.write_text(src, encoding="utf-8")
     print("patched:", path)
     return 0
 

@@ -78,6 +78,7 @@ def test_netid_types():
 
 def test_vendors_and_airtime(tmp_path):
     (tmp_path / "oui.csv").write_text("Registry,Assignment,Organization Name,Organization Address\nMA-L,0004A3,Microchip Technology Inc.,x\n")
+    (tmp_path / "mam.csv").write_text("Registry,Assignment,Organization Name,Organization Address\n")
     (tmp_path / "oui36.csv").write_text("Registry,Assignment,Organization Name,Organization Address\nMA-S,70B3D57ED,The Things Industries B.V.,x\n")
     v = Vendors(tmp_path)
     join_eui = bytes.fromhex("70B3D57ED0000001")[::-1]

@@ -10,8 +10,8 @@ Turn the MNTD Goldspot into a box that
 3. records everything it hears and relays in a **database**, and
 4. shows it all in a **web GUI**, including time-sync state and diagnostics.
 
-Everything runs on stock Raspberry Pi OS Lite 64-bit; nothing from the Helium firmware is kept
-except hardware facts ([firmware-analysis.md](firmware-analysis.md)).
+Everything runs on stock Raspberry Pi OS Lite 64-bit; no software from the original firmware is
+used ([hardware.md](hardware.md) has the hardware facts).
 
 ## Meshtastic on the same radio and antenna
 

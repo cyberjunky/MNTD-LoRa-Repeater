@@ -1,4 +1,5 @@
 import time
+from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -13,6 +14,7 @@ from lorarepeater.timesync import TimeSync
 @pytest.fixture
 async def client(tmp_path):
     cfg = Config(db_path=tmp_path / "api.db", gwmp=GwmpConfig(listen_port=0))
+    cfg.web.dir = Path(__file__).resolve().parents[2] / "web"
     db = Database(cfg.db_path)
     await db.open()
     mux = GwmpMux(cfg.gwmp, db)          # not started: no sockets needed for the API

@@ -57,7 +57,6 @@ class MeshSxConfig(BaseModel):
     role: str = "ROUTER_LATE"       # ROUTER_LATE (indoor), ROUTER (elevated site), CLIENT_MUTE (listen only)
     hop_limit: int = 3
     relay_delay_ms: float = 200.0   # added to the firmware-like contention window
-    relay_legacy: bool = True       # also relay frames without hop_start (very old firmware)
     duty_cycle_pct: float = 10.0    # EU 869.4-869.65 MHz band limit
     nodeinfo_interval_s: float = 3600.0
     position_broadcast: bool = False
@@ -81,8 +80,7 @@ class WebConfig(BaseModel):
     host: str = "0.0.0.0"
     port: int = 8080
     title: str = "MNTD LoRa Repeater"
-    # Folder holding index.html/app.js/app.css. None = auto: /opt/lorarepeater/web, then the repo checkout.
-    dir: Path | None = None
+    dir: Path = Path("/opt/lorarepeater/web")   # index.html, app.js, app.css, icon.svg
 
 
 class HardwareConfig(BaseModel):

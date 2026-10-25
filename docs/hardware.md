@@ -1,10 +1,9 @@
 # Hardware: MNTD Goldspot (RAK Hotspot Miner V2, EU868)
 
-Sources: the photos in [photos/](../photos/), the stock firmware scripts
-(see [firmware-analysis.md](firmware-analysis.md)), and RAKwireless documentation linked below.
-Tags: **seen** = visible in photos or firmware; **inferred** = deduced, verify on the bench.
+Sources: inspection of the unit, measurements on the running box, the board-detection logic of
+the stock software, and RAKwireless documentation linked below.
 
-## Bill of materials (seen)
+## Bill of materials
 
 | Part | Details |
 |---|---|
@@ -16,12 +15,12 @@ Tags: **seen** = visible in photos or firmware; **inferred** = deduced, verify o
 | LED | **Not fitted.** The LP5562 footprint `U6` and the `LED1`/`D6` pads are unpopulated on this revision; nothing answers at 0x30. The front light pipes sit over the Pi's own PWR and ACT LEDs. |
 | Enclosure | Gold anodised aluminium extrusion, external LoRa antenna on SMA, label `by RAKwireless`. The module's `GPS` u.FL has no cable. |
 
-## Pi 4 GPIO usage by the HAT (seen in firmware unless noted)
+## Pi 4 GPIO usage by the HAT
 
 | BCM GPIO | Function | Notes |
 |---|---|---|
 | 2 / 3 | I2C1 SDA/SCL | EEPROM (0x50, blank) and ECC608 (0x60). No 0x30 and no 0x42: the GNSS is not wired to the Pi (also not on the ID pins 0/1, not on 23/24, UART pins float). |
-| 7 | `SOFT_RESET_PAIRING` input, active low | SPI0 CE1 pin. U-Boot reads it to choose the fallback image. On "rakspot" boards it floats and can read as pressed. **Do not use CE1 for a second SPI device without checking this line.** |
+| 7 | Button input, active low | SPI0 CE1 pin; the stock boot loader read it to pick a fallback image. **Do not use CE1 for a second SPI device without checking this line.** |
 | 8 | SPI0 CE0 | SX1302 chip select, `/dev/spidev0.0` |
 | 9 / 10 / 11 | SPI0 MISO / MOSI / SCLK | SX1302 |
 | 13 | IO expander enable (sidetable boards only) | Harmless on RAK boards |
@@ -30,9 +29,30 @@ Tags: **seen** = visible in photos or firmware; **inferred** = deduced, verify o
 | 25 | SX1302 reset on `rakspot_v3` (EEPROM present) and sidetable | **Confirmed on this unit** (2026-10-25: chip_id answers only after a pulse on 25) |
 | 6 | Externally pulled high by the HAT | Only free header pin the HAT drives; pulsing it low changes nothing observable. |
 
-Everything else on the 40-pin header is free as far as the firmware shows. SPI1
-(GPIO 16–21) and SPI0 CE1 are the candidates for adding a Meshtastic radio; see
-[architecture.md](architecture.md).
+Everything else on the 40-pin header is free.
+
+## Board variants
+
+The same software ran on several RAK and Helium boards and told them apart by what answers on
+I2C bus 1. The variant decides the SX1302 reset line:
+
+| Variant | Recognised by | SX1302 reset |
+|---|---|---|
+| Pi 3 RAK hotspot | Pi 3 | GPIO 17 |
+| RAK V2 without secure element | no 0x60 | GPIO 17 |
+| RAK V2 with secure element | 0x60, no EEPROM | GPIO 17 |
+| RAK V2 with EEPROM (this unit, MNTD Goldspot) | 0x60 and 0x50 | **GPIO 25** |
+
+The reset pulse is low 100 ms, high 100 ms, low 100 ms; the SX1302 is held in reset while the
+line is high. The packet forwarder expects `reset_lgw.sh` in its working directory.
+
+## LoRa configuration
+
+The installer starts from Semtech's own EU868 profile in `sx1302_hal` and adds the RAK2287's
+TX gain table (power amplifier calibration). RSSI offset (-215.4 dB) and temperature
+compensation in Semtech's profile already match the module. Radio 0 (TX) and radio 1 are
+regrouped so the eight LoRaWAN channels and the Meshtastic service channel fit (see
+[meshtastic-on-sx1302.md](meshtastic-on-sx1302.md)).
 
 ## Power
 

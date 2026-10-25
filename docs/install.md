@@ -5,7 +5,7 @@
 - The MNTD Goldspot (Raspberry Pi 4 + RAK2287 EU868). Keep its antennas connected: never run
   the concentrator without a LoRa antenna.
 - A microSD card (16 GB or more). The original card can be reused after you back it up
-  (`firmware/README.md` explains what is on it).
+  (`tools/sdcard_backup.py` makes a raw image on Windows).
 - Optional: a second antenna position with a metre or two of vertical separation from the
   LoRaWAN antenna.
 
@@ -33,20 +33,18 @@ The script (idempotent, re-run any time):
 
 1. installs packages (build tools, raspi-utils, i2c-tools, systemd-timesyncd),
 2. enables SPI, I2C and the watchdog in `config.txt`,
-3. probes I2C bus 1 (ECC608 0x60, EEPROM 0x50; the EEPROM marks the board revision),
-4. builds Semtech `sx1302_hal` V2.1.0 into `/opt/sx1302_hal` with the HAL patch and installs
+3. builds Semtech `sx1302_hal` V2.1.0 into `/opt/sx1302_hal` with the HAL patch and installs
    the reset script,
-5. resets the SX1302 on GPIO 25 (or 17) and reads its EUI with `chip_id`, falling back to the
-   other pin automatically,
-6. writes `/etc/lorarepeater/global_conf.json` from the original EU868 profile,
-7. installs the Python backend into `/opt/lorarepeater/venv`, the systemd units and the
+4. resets the SX1302 on GPIO 25 and reads its EUI with `chip_id` (stops if it does not answer),
+5. writes `/etc/lorarepeater/global_conf.json` from the original EU868 profile,
+6. installs the Python backend into `/opt/lorarepeater/venv`, the systemd units and the
    polkit/udev rules.
 
 Environment variables for the script:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `RESET_PIN` | `auto` | `25`, `17` or `auto` (EEPROM present → 25, then verified) |
+| `RESET_PIN` | `25` | SX1302 reset GPIO |
 | `HAL_TAG` | `V2.1.0` | sx1302_hal git tag |
 
 Meshtastic runs on the concentrator's service channel. Name, role, preset (`datr`) and channels
@@ -98,7 +96,7 @@ The same from a shell: `sudo -u lorarepeater /opt/lorarepeater/venv/bin/lorarepe
 
 ## Troubleshooting
 
-- **`chip_id` finds nothing on either pin**: check `ls /dev/spidev0.0`, that `dtparam=spi=on`
+- **The SX1302 does not answer**: check `ls /dev/spidev0.0`, that `dtparam=spi=on`
   is in `config.txt` and that you rebooted. Power-cycle the box; the SX1302 sometimes needs a
   cold start.
 - **Forwarder exits with "failed to configure temperature sensor"**: the HAL patch did not

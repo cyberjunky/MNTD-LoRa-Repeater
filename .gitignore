@@ -35,6 +35,7 @@ Thumbs.db
 .agents/
 skills-lock.json
 
-# Full extraction of the stock firmware
-firmware/extracted/
+# Local only: stock SD-card backup and hardware photos
+firmware/
+photos/
 NOTES.md

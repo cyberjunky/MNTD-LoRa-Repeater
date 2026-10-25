@@ -31,20 +31,6 @@ HEADER_LEN = 16
 MAX_HOPS = 7
 DEFAULT_PSK = bytes([0xD4, 0xF1, 0xBB, 0x3A, 0x20, 0x29, 0x07, 0x59, 0xF0, 0xBC, 0xFF, 0xAB, 0xCF, 0x4E, 0x69, 0x01])
 
-# Modem presets: (spreading factor, bandwidth Hz, coding rate denominator). EU_868 puts all of
-# them in the 869.4-869.65 MHz band; the slot is derived below exactly like the firmware does.
-PRESETS = {
-    "LongFast": (11, 250_000, 5),
-    "LongSlow": (12, 125_000, 8),
-    "LongModerate": (11, 125_000, 8),
-    "MediumFast": (9, 250_000, 5),
-    "MediumSlow": (10, 250_000, 5),
-    "ShortFast": (7, 250_000, 5),
-    "ShortSlow": (8, 250_000, 5),
-    "ShortTurbo": (7, 500_000, 5),
-    "LongTurbo": (11, 500_000, 5),
-}
-EU_868_BAND = (869.4e6, 869.65e6)
 
 
 @dataclass
@@ -134,26 +120,6 @@ def crypt(key: bytes, packet_id: int, sender: int, data: bytes) -> bytes:
 
 
 # -- frequency slot (firmware RadioInterface::applyModemConfig) ---------------------
-
-def djb2(name: str) -> int:
-    h = 5381
-    for c in name.encode():
-        h = ((h << 5) + h + c) & 0xFFFFFFFF
-    return h
-
-
-def slot_frequency_hz(bw_hz: int, channel_name: str, band: tuple[float, float] = EU_868_BAND) -> float:
-    lo, hi = band
-    num = max(1, int((hi - lo) / bw_hz))
-    slot = djb2(channel_name) % num
-    return lo + bw_hz / 2 + slot * bw_hz
-
-
-def preset_radio(preset: str, channel_name: str = "LongFast") -> dict:
-    sf, bw, cr = PRESETS[preset]
-    return {"sf": sf, "bw_hz": bw, "cr": cr, "freq_hz": slot_frequency_hz(bw, channel_name),
-            "datr": f"SF{sf}BW{bw // 1000}", "codr": f"4/{cr}"}
-
 
 def parse_datr(datr: str) -> tuple[int, int]:
     """'SF11BW250' -> (11, 250000)."""

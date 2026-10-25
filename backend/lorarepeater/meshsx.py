@@ -59,21 +59,11 @@ def _pb():
 
 
 def derive_node_num() -> int:
-    """Stable node number from the Pi serial (or the MAC elsewhere), with a usable low byte."""
-    serial = None
-    try:
-        for line in open("/proc/cpuinfo", encoding="utf-8"):
-            if line.startswith("Serial"):
-                serial = int(line.split(":")[1].strip()[-8:], 16)
-    except OSError:
-        pass
-    if serial is None:
-        import uuid
-        serial = uuid.getnode() & 0xFFFFFFFF
-    num = serial & 0xFFFFFFFF
-    if num in (0, BROADCAST):
-        num = 0x1A2B3C4D
-    if (num & 0xFF) in (0x00, 0xFF):  # relay_node byte must be meaningful
+    """Node number = the last 32 bits of the Raspberry Pi serial, with a usable low byte."""
+    with open("/proc/cpuinfo", encoding="utf-8") as f:
+        serial = next(line for line in f if line.startswith("Serial"))
+    num = int(serial.split(":")[1].strip()[-8:], 16)
+    if (num & 0xFF) in (0x00, 0xFF):  # relay_node byte 0 means "none", 0xFF is reserved
         num = (num & 0xFFFFFF00) | 0x42
     return num
 
@@ -158,10 +148,7 @@ class MeshSxEngine:
             # our own transmission, picked up by the concentrator's second radio: proves TX, not traffic
             self.counters["self_echo"] = self.counters.get("self_echo", 0) + 1
             return
-        rssi = rx.get("rssi", rx.get("rssis"))
-        snr = rx.get("lsnr")
-        if rssi is None and rx.get("rsig"):
-            rssi, snr = rx["rsig"][0].get("rssic"), rx["rsig"][0].get("lsnr")
+        rssi, snr = rx.get("rssi"), rx.get("lsnr")
         row: dict[str, Any] = {
             "direction": "rx", "source": "sx1302", "rx_time": int(time.time()),
             "packet_id": hdr.packet_id, "from_node": hdr.sender, "to_node": hdr.to,
@@ -272,8 +259,6 @@ class MeshSxEngine:
             return  # addressed to us, nothing to forward
         if hdr.to != BROADCAST and hdr.next_hop not in (0, self.my_byte):
             return  # directed message with another preferred relay (next-hop routing, fw >= 2.6)
-        if hdr.hop_start == 0 and not self.cfg.relay_legacy:
-            return
         new = Header(**{**hdr.__dict__, "hop_limit": hdr.hop_limit - 1, "relay_node": self.my_byte})
         frame = new.pack() + raw[HEADER_LEN:]
         delay_ms = self._contention_delay_ms(rx.get("lsnr"))
@@ -307,7 +292,7 @@ class MeshSxEngine:
         return used + airtime <= self.cfg.duty_cycle_pct / 100.0 * 3600_000.0
 
     async def transmit(self, frame: bytes, tmst: int | None = None, kind: str = "tx",
-                       row_id: int | None = None, of: Header | None = None) -> bool:
+                       row_id: int | None = None, of: Header | None = None, text: str | None = None) -> bool:
         if not self.cfg.tx_enabled:
             return False
         at = airtime_ms(self.sf, self.bw_hz, self.cr, len(frame))
@@ -338,7 +323,7 @@ class MeshSxEngine:
                 "from_node": hdr.sender, "to_node": hdr.to, "channel": 0, "portnum": kind.upper(),
                 "hop_limit": hdr.hop_limit, "hop_start": hdr.hop_start, "hops_used": 0, "relay_node": hdr.relay_node,
                 "next_hop": hdr.next_hop, "rssi": None, "snr": None, "via_mqtt": 0, "want_ack": int(hdr.want_ack),
-                "priority": None, "encrypted": 0, "text": getattr(self, "_last_text", None) if kind == "text" else None,
+                "priority": None, "encrypted": 0, "text": text,
                 "payload": None, "airtime_ms": at, "relayed_by_us": 0,
             })
         return True
@@ -347,22 +332,21 @@ class MeshSxEngine:
         return (int.from_bytes(os.urandom(4), "little") | 0x80000000) & 0xFFFFFFFF  # never 0
 
     async def _send_data(self, data: Any, to: int, chan: Channel, want_ack: bool = False, kind: str = "tx",
-                         hop_limit: int | None = None) -> int:
+                         hop_limit: int | None = None, text: str | None = None) -> int:
         pid = self._new_packet_id()
         hops = min(MAX_HOPS, self.cfg.hop_limit if hop_limit is None else hop_limit)
         hdr = Header(to=to, sender=self.node_num, packet_id=pid, hop_limit=hops, hop_start=hops,
                      want_ack=want_ack, channel_hash=chan.hash, relay_node=self.my_byte)
         body = crypt(chan.key, pid, self.node_num, data.SerializeToString())
         self.seen[(self.node_num, pid)] = time.time()
-        await self.transmit(hdr.pack() + body, kind=kind, of=hdr)
+        await self.transmit(hdr.pack() + body, kind=kind, of=hdr, text=text)
         return pid
 
     async def send_text(self, text: str, to: int = BROADCAST, channel: int = 0, want_ack: bool = False) -> int:
         mesh_pb2, portnums_pb2, _, _ = _pb()
         chan = self.channels[channel]
         data = mesh_pb2.Data(portnum=portnums_pb2.PortNum.Value("TEXT_MESSAGE_APP"), payload=text.encode("utf-8")[:230])
-        self._last_text = text
-        return await self._send_data(data, to, chan, want_ack=want_ack, kind="text")
+        return await self._send_data(data, to, chan, want_ack=want_ack, kind="text", text=text)
 
     async def send_ack(self, to: int, request_id: int, chan: Channel) -> None:
         mesh_pb2, portnums_pb2, _, _ = _pb()
@@ -436,13 +420,6 @@ class MeshSxEngine:
             "last_tx_s_ago": round(now - self.last_tx, 1) if self.last_tx else None,
         }
 
-
-def _role_name(role: int) -> str:
-    _, _, _, config_pb2 = _pb()
-    try:
-        return config_pb2.Config.DeviceConfig.Role.Name(role)
-    except ValueError:
-        return str(role)
 
 
 # ---------------------------------------------------------------- decoding tables

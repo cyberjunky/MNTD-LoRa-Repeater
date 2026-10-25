@@ -40,9 +40,3 @@ async def test_index_serves_gui(client):
     assert r.status_code == 200 and r.headers["cache-control"] == "no-cache"
     assert "cache-control" not in (await client.get("/api/status")).headers
 
-
-def test_find_web_dir(tmp_path):
-    from lorarepeater.api import find_web_dir
-    assert find_web_dir(tmp_path) is None            # no index.html there
-    (tmp_path / "index.html").write_text("<html></html>")
-    assert find_web_dir(tmp_path) == tmp_path

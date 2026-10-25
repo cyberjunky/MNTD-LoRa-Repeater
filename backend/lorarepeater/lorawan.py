@@ -169,10 +169,7 @@ class Vendors:
         if directory is None:
             return
         for name, digits in self.FILES.items():
-            path = Path(directory) / name
-            if not path.is_file():
-                continue
-            with path.open(encoding="utf-8", errors="replace", newline="") as f:
+            with (Path(directory) / name).open(encoding="utf-8", errors="replace", newline="") as f:
                 rows = csv.reader(f)
                 next(rows, None)
                 self.maps.append((digits, {r[1].upper(): r[2].strip() for r in rows if len(r) > 2}))

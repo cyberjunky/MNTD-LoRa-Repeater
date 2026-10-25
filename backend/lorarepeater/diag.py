@@ -180,16 +180,14 @@ class Diag:
                 info["global_conf"] = {k: g.get(k) for k in GLOBAL_CONF_KEYS}
             except ValueError:
                 pass
-        ver = _read(self.hal_dir / "VERSION") or _read(self.hal_dir / "libloragw" / "VERSION")
+        ver = _read(self.hal_dir / "VERSION")
         info["hal_version"] = ver.strip() if ver else None
         return info
 
     async def services(self) -> list[dict[str, Any]]:
         props = ("Id,Description,LoadState,ActiveState,SubState,UnitFileState,NRestarts,Result,"
                  "ActiveEnterTimestamp,ExecMainPID")
-        rc, out = await run(["systemctl", "show", "-p", props, *[f"{u}.service" for u in UNITS]], 10)
-        if rc != 0 and not out.strip():
-            return [{"unit": u, "active": "unknown", "sub": out.strip()[:80]} for u in UNITS]
+        _, out = await run(["systemctl", "show", "-p", props, *[f"{u}.service" for u in UNITS]], 10)
         rows = []
         for blk in parse_systemctl_show(out):
             unit = blk.get("Id", "").removesuffix(".service")

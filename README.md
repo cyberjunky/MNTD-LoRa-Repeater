@@ -54,14 +54,8 @@ Then open `http://<hostname>:8080/` and add your LoRaWAN network servers to
 | `backend/` | Python package `lorarepeater` (FastAPI, asyncio UDP mux, Meshtastic engine, time-sync monitor, diagnostics) and tests |
 | `web/` | The dashboard (static HTML/CSS/JS) |
 | `install/` | `install.sh`, systemd units, sx1302_hal patch, reset script, polkit and udev rules |
-| `docs/` | [hardware](docs/hardware.md), [firmware analysis](docs/firmware-analysis.md), [architecture](docs/architecture.md), [Meshtastic on the SX1302](docs/meshtastic-on-sx1302.md), [install](docs/install.md), [research](docs/research/) |
-| `tools/` | `extract_initramfs.py` to unpack the stock firmware image |
-| `photos/` | The hardware |
-
-## How the stock firmware was reverse engineered
-
-The 1 GB SD image holds a FAT boot partition with U-Boot and an ext3 partition with an ARM64
-kernel whose initramfs *is* the root filesystem (Buildroot 2020.02, LZMA cpio). Unpacking it
+| `docs/` | [hardware](docs/hardware.md), [architecture](docs/architecture.md), [Meshtastic on the SX1302](docs/meshtastic-on-sx1302.md), [install](docs/install.md), [research](docs/research/) |
+| `tools/` | `sdcard_backup.py` to image the original microSD card before reflashing |
 
 ## Development
 
@@ -88,3 +82,4 @@ to verify on air: Meshtastic receive and relay (bench procedure in
 
 ## License
 
+MIT.

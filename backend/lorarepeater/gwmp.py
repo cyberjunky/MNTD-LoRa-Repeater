@@ -34,8 +34,6 @@ log = logging.getLogger(__name__)
 RxHook = Callable[[dict[str, Any]], bool]   # returns True to claim an rxpk (not LoRaWAN)
 
 PUSH_DATA, PUSH_ACK, PULL_DATA, PULL_RESP, PULL_ACK, TX_ACK = range(6)
-NAMES = {PUSH_DATA: "PUSH_DATA", PUSH_ACK: "PUSH_ACK", PULL_DATA: "PULL_DATA",
-         PULL_RESP: "PULL_RESP", PULL_ACK: "PULL_ACK", TX_ACK: "TX_ACK"}
 
 
 @dataclass
@@ -90,7 +88,6 @@ class GwmpMux:
         self.db = db
         self.loop = asyncio.get_event_loop()
         self.fwd_transport: asyncio.DatagramTransport | None = None
-        self.push_addr: tuple[str, int] | None = None   # where PUSH_DATA came from
         self.pull_addr: tuple[str, int] | None = None   # where PULL_DATA came from (downlink target)
         self.gateway_eui: bytes = bytes.fromhex(cfg.gateway_eui) if cfg.gateway_eui else b""
         self.upstreams: list[Upstream] = [Upstream(u) for u in cfg.upstreams if u.enabled]
@@ -142,7 +139,6 @@ class GwmpMux:
         token, ident = data[1:3], data[3]
         self.last_forwarder_seen = time.time()
         if ident == PUSH_DATA and len(data) >= 12:
-            self.push_addr = addr
             eui = data[4:12]
             if not self.gateway_eui:
                 self.gateway_eui = eui
@@ -159,10 +155,7 @@ class GwmpMux:
             tok = int.from_bytes(token, "big")
             if tok in self._local_tokens:
                 self._local_tokens.pop(tok, None)
-                try:
-                    err = json.loads(data[12:] or b"{}").get("txpk_ack", {}).get("error")
-                except Exception:
-                    err = None
+                err = json.loads(data[12:] or b"{}").get("txpk_ack", {}).get("error")
                 if err and err != "NONE":
                     self.counters["tx_errors"] = self.counters.get("tx_errors", 0) + 1
                     await self.db.add_event("mesh", "warn", f"own transmission rejected by forwarder: {err}")
@@ -172,10 +165,7 @@ class GwmpMux:
                     up.downlink_tokens.pop(tok, None)
                     up.transport.sendto(data)
                     break
-            try:
-                err = json.loads(data[12:] or b"{}").get("txpk_ack", {}).get("error")
-            except Exception:
-                err = None
+            err = json.loads(data[12:] or b"{}").get("txpk_ack", {}).get("error")
             if err and err != "NONE":
                 await self.db.add_event("gwmp", "warn", f"TX_ACK error: {err}")
 
@@ -200,14 +190,10 @@ class GwmpMux:
                 "tmst": rx.get("tmst"), "time": rx.get("time"), "freq": rx.get("freq"),
                 "chan": rx.get("chan"), "rfch": rx.get("rfch"), "stat": rx.get("stat"),
                 "modu": rx.get("modu"), "datr": rx.get("datr"), "codr": rx.get("codr"),
-                "rssi": rx.get("rssi", rx.get("rssis")), "lsnr": rx.get("lsnr"),
+                "rssi": rx.get("rssi"), "lsnr": rx.get("lsnr"),
                 "size": rx.get("size"), "data": rx.get("data"),
                 "forwarded": [u.name for u in self.upstreams if u.transport],
             }
-            # sx1302 forwarders put per-antenna info in rsig[]
-            if row["rssi"] is None and rx.get("rsig"):
-                row["rssi"] = rx["rsig"][0].get("rssic")
-                row["lsnr"] = rx["rsig"][0].get("lsnr")
             row["airtime_ms"] = lora_airtime_ms(row["datr"], row["codr"], row["size"])
             phy = decode_phy(rx.get("data", ""), self.vendors) if rx.get("data") else None
             if phy:

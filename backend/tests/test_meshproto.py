@@ -12,8 +12,6 @@ from lorarepeater.meshproto import (
     expand_psk,
     node_id_str,
     parse_datr,
-    preset_radio,
-    slot_frequency_hz,
 )
 
 
@@ -53,13 +51,9 @@ def test_crypt_roundtrip_and_nonce_dependence():
     assert crypt(b"", 1, 2, plain) == plain
 
 
-def test_eu868_slots():
-    assert slot_frequency_hz(250_000, "LongFast") == pytest.approx(869.525e6)
-    r = preset_radio("LongFast")
-    assert (r["sf"], r["bw_hz"], r["datr"], r["codr"]) == (11, 250_000, "SF11BW250", "4/5")
+def test_parse_datr():
     assert parse_datr("SF11BW250") == (11, 250_000)
     assert parse_datr("sf7bw125") == (7, 125_000)
-    assert 869.4e6 < slot_frequency_hz(125_000, "LongSlow") < 869.65e6
 
 
 def test_airtime_longfast():
