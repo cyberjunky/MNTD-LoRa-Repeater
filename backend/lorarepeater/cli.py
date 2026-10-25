@@ -28,7 +28,7 @@ async def _serve(cfg: Config) -> None:
     await db.open()
     mux = GwmpMux(cfg.gwmp, db, Vendors(cfg.db_path.parent / "ieee"))
     timesync = TimeSync()
-    helium = Helium(cfg.helium)
+    helium = Helium(cfg.helium, db)
     meshsx = MeshSxEngine(cfg.meshsx, db, mux) if cfg.meshsx.enabled else None
     telegram = TelegramBridge(cfg.telegram, db, meshsx=meshsx)
     if cfg.hardware.led_enabled:

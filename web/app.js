@@ -155,7 +155,7 @@
   // ---------------------------------------------------------------- tiles / tables
   const tile = (label, value, sub = "", status = null) => el("div", { class: "tile" },
     el("div", { class: "label" }, ...(status ? [el("span", { class: `status ${status}` })] : []), label),
-    el("div", { class: String(value).length > 11 ? "value long" : "value" }, value), el("div", { class: "sub" }, sub));
+    el("div", { class: /^\S{12,}$/.test(String(value)) ? "value long" : "value" }, value), el("div", { class: "sub" }, sub));
   // tables keep their rows and render one page at a time; the pager sits right below the table
   const PAGE_SIZE = 25;
   function table(node, cols, rows, { empty: emptyMsg = "nothing yet", pageSize = PAGE_SIZE } = {}) {
@@ -461,7 +461,7 @@
     note.hidden = !errs.length;
     note.innerHTML = errs.length ? `<h3>Some sources did not answer</h3><p>${errs.map(([k, v]) => `${esc(k)}: ${esc(v)}`).join("<br>")}</p>` : "";
     tiles.append(
-      tile("Hotspot", h.name || gw.name || "?", gw.key ? `${gw.key.slice(0, 8)}…${gw.key.slice(-6)}` : "", gw.key ? "good" : "critical"),
+      tile("Hotspot", h.name || gw.name || "?", gw.key || "", gw.key ? "good" : "critical"),
       tile("Packet router", gw.router?.connected ? "connected" : "offline", `${gw.region || "?"} · gateway-rs ${gw.fw || "?"}`, gw.router?.connected ? "good" : "critical"),
       tile("On-chain status", h.active ? "active" : "inactive", `${(h.networks || []).join(", ").toUpperCase() || "–"} · onboarded ${h.onboarded ? new Date(h.onboarded).toLocaleDateString() : "?"}`, h.active ? "good" : "warning"),
       tile("Asserted location", h.city || "–", `${h.gain_dbi != null ? h.gain_dbi + " dBi" : ""}${h.elevation_m != null ? ` · ${h.elevation_m} m` : ""}`),

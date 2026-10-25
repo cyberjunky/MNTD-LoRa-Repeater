@@ -5,6 +5,7 @@ import struct
 import httpx
 
 from lorarepeater.config import HeliumConfig
+from lorarepeater.db import Database
 from lorarepeater.helium import TOKENS, Helium, b58encode, claim_from_tx, parse_recipient
 
 ASSET = "B6KLmmB6TsLjvdsiRDvPfxXrSBUSV9kVLRZiUpqzesqY"
@@ -46,7 +47,7 @@ def test_claim_from_tx_picks_the_receiving_wallet():
     assert claim_from_tx(claim_tx(mint, 5), TOKENS["IOT"][0], 6) is None
 
 
-async def test_refresh_builds_the_snapshot():
+async def test_refresh_builds_the_snapshot(tmp_path, monkeypatch):
     hnt_mint, _, hnt_ld = TOKENS["HNT"]
     iot_mint, _, iot_ld = TOKENS["IOT"]
 
@@ -78,7 +79,10 @@ async def test_refresh_builds_the_snapshot():
         result = results[method]()
         return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": result})
 
-    h = Helium(HeliumConfig(), transport=httpx.MockTransport(handler))
+    db = Database(tmp_path / "h.db")
+    await db.open()
+    monkeypatch.setattr("lorarepeater.helium.RPC_PACE_S", 0)
+    h = Helium(HeliumConfig(), db, transport=httpx.MockTransport(handler))
 
     async def gateway_info():
         return {"key": "112FYbEk", "name": "skinny-daisy-armadillo", "region": "EU868", "router": {"connected": True}}
@@ -94,3 +98,10 @@ async def test_refresh_builds_the_snapshot():
     assert s["rewards"]["wallet"] == WALLET
     assert s["wallet"]["balances"] == {"SOL": 2.0, "HNT": 5.5, "IOT": 1049.4}
     assert s["price"]["HNT"]["eur"] == 2.5
+    stored = await db.fetch("SELECT token, amount FROM helium_claims ORDER BY token")
+    assert stored == [{"token": "HNT", "amount": 0.16}, {"token": "IOT", "amount": 16.0}]
+    h2 = Helium(HeliumConfig(), db, transport=httpx.MockTransport(handler))
+    await h2.start()                                   # claims come back from the database
+    assert len(h2._claims) == 2
+    await h2.stop()
+    await db.close()

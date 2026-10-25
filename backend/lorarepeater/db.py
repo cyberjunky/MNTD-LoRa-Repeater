@@ -152,6 +152,14 @@ CREATE TABLE IF NOT EXISTS mesh_links (
     PRIMARY KEY (a, b, source)
 );
 
+CREATE TABLE IF NOT EXISTS helium_claims (   -- reward claim transactions (immutable, fetched once)
+    signature TEXT PRIMARY KEY,
+    token     TEXT,
+    time      INTEGER,
+    wallet    TEXT,
+    amount    REAL
+);
+
 CREATE TABLE IF NOT EXISTS events (
     id      INTEGER PRIMARY KEY,
     ts      REAL NOT NULL,
@@ -262,6 +270,12 @@ class Database:
             )
             await self.conn.commit()
         self._notify("mesh_nodes", row)
+
+    async def add_helium_claim(self, row: dict[str, Any]) -> None:
+        async with self._lock:
+            await self.conn.execute("INSERT OR REPLACE INTO helium_claims (signature, token, time, wallet, amount) "
+                                    "VALUES (:signature, :token, :time, :wallet, :amount)", row)
+            await self.conn.commit()
 
     async def bump_node_packets(self, num: int) -> None:
         async with self._lock:

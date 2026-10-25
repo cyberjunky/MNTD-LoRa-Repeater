@@ -9,7 +9,9 @@ Sources, all public and read-only:
   claim transactions (history and the wallet that receives them) and that wallet's balances;
 * CoinGecko: the HNT price, for a value estimate.
 
-Nothing is stored; the snapshot is rebuilt every REFRESH_S and served by /api/helium.
+The snapshot is rebuilt every REFRESH_S and served by /api/helium. Claim transactions never
+change, so each is fetched once and kept in the helium_claims table (the public RPC is rate
+limited).
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ from typing import Any
 import httpx
 
 from .config import HeliumConfig
+from .db import Database
 
 log = logging.getLogger(__name__)
 
@@ -40,6 +43,8 @@ TOKENS = {  # symbol: (mint, decimals, lazy distributor)
     "IOT": ("iotEVVZLEywoTn1QdwNPddxPWszn3zFhEot3MfL9fns", 6, "37eiz5KzYwpAdLgrSh8GT1isKiJ6hcE5ET86dqaoCugL"),
 }
 CLAIM_HISTORY = 25          # claim transactions per token
+RPC_PACE_S = 1.0            # between transaction lookups on the public RPC
+RPC_RETRIES = (5, 15, 45)   # back-off in seconds after HTTP 429
 B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 
 
@@ -75,14 +80,17 @@ def claim_from_tx(tx: dict[str, Any], mint: str, decimals: int) -> tuple[str, fl
 
 
 class Helium:
-    def __init__(self, cfg: HeliumConfig, transport: httpx.AsyncBaseTransport | None = None):
+    def __init__(self, cfg: HeliumConfig, db: Database, transport: httpx.AsyncBaseTransport | None = None):
         self.cfg = cfg
+        self.db = db
         self.transport = transport          # tests inject a mock transport
         self.state: dict[str, Any] = {"enabled": cfg.enabled}
-        self._claims: dict[str, dict[str, Any]] = {}    # signature -> claim (transactions never change)
+        self._claims: dict[str, dict[str, Any]] = {}    # signature -> claim, mirrored in helium_claims
         self._task: asyncio.Task | None = None
 
     async def start(self) -> None:
+        for row in await self.db.fetch("SELECT * FROM helium_claims"):
+            self._claims[row["signature"]] = row if row["wallet"] else {}
         if self.cfg.enabled:
             self._task = asyncio.create_task(self._loop(), name="helium")
 
@@ -152,7 +160,11 @@ class Helium:
         }
 
     async def _rpc(self, http: httpx.AsyncClient, method: str, params: list[Any]) -> Any:
-        r = await http.post(SOLANA_RPC, json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
+        for wait in (*RPC_RETRIES, None):
+            r = await http.post(SOLANA_RPC, json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
+            if r.status_code != 429 or wait is None:
+                break
+            await asyncio.sleep(wait)
         r.raise_for_status()
         body = r.json()
         if "error" in body:
@@ -172,14 +184,14 @@ class Helium:
             r.raise_for_status()
             lifetime = int(r.json()["currentRewards"])
             recipient, claimed = recipients.get(distributor, (None, 0))
-            claims = await self._claim_history(http, recipient, mint, decimals) if recipient else []
+            claims = await self._claim_history(http, recipient, sym, mint, decimals) if recipient else []
             for c in claims:
                 wallets[c["wallet"]] = wallets.get(c["wallet"], 0) + 1
             tokens[sym] = {"lifetime": lifetime / 10 ** decimals, "claimed": claimed / 10 ** decimals,
                            "unclaimed": (lifetime - claimed) / 10 ** decimals, "recipient": recipient, "claims": claims}
         return {"tokens": tokens, "wallet": max(wallets, key=wallets.get) if wallets else None}
 
-    async def _claim_history(self, http: httpx.AsyncClient, recipient: str, mint: str, decimals: int) -> list[dict[str, Any]]:
+    async def _claim_history(self, http: httpx.AsyncClient, recipient: str, sym: str, mint: str, decimals: int) -> list[dict[str, Any]]:
         sigs = await self._rpc(http, "getSignaturesForAddress", [recipient, {"limit": CLAIM_HISTORY}])
         claims = []
         for s in sigs:
@@ -187,8 +199,11 @@ class Helium:
             if sig not in self._claims and not s.get("err"):
                 tx = await self._rpc(http, "getTransaction", [sig, {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}])
                 got = claim_from_tx(tx or {}, mint, decimals)
-                self._claims[sig] = {"signature": sig, "time": s.get("blockTime"), "wallet": got[0], "amount": got[1]} if got else {}
-                await asyncio.sleep(0.25)      # stay polite to the public RPC
+                row = {"signature": sig, "token": sym, "time": s.get("blockTime"),
+                       "wallet": got[0] if got else None, "amount": got[1] if got else None}
+                await self.db.add_helium_claim(row)
+                self._claims[sig] = row if got else {}
+                await asyncio.sleep(RPC_PACE_S)
             if self._claims.get(sig):
                 claims.append(self._claims[sig])
         return claims
