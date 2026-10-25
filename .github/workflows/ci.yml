@@ -16,8 +16,8 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"     # Raspberry Pi OS Trixie
           cache: pip
@@ -30,7 +30,7 @@ jobs:
     name: Check the web GUI and install scripts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: node --check web/app.js
       - run: bash -n install/install.sh
       - run: sh -n install/bin/reset_lgw.sh
@@ -39,8 +39,8 @@ jobs:
     name: Patch and build sx1302_hal V2.1.0
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           repository: Lora-net/sx1302_hal
           ref: V2.1.0
