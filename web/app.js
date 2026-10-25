@@ -155,7 +155,7 @@
   // ---------------------------------------------------------------- tiles / tables
   const tile = (label, value, sub = "", status = null) => el("div", { class: "tile" },
     el("div", { class: "label" }, ...(status ? [el("span", { class: `status ${status}` })] : []), label),
-    el("div", { class: "value" }, value), el("div", { class: "sub" }, sub));
+    el("div", { class: String(value).length > 11 ? "value long" : "value" }, value), el("div", { class: "sub" }, sub));
   function table(node, cols, rows, { empty: emptyMsg = "nothing yet" } = {}) {
     node.innerHTML = "";
     if (!rows.length) { node.append(el("tr", {}, el("td", { class: "empty", colspan: cols.length }, emptyMsg))); return; }

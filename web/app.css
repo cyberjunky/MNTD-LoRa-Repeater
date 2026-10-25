@@ -124,4 +124,5 @@ button:disabled { opacity: .5; cursor: wait; }
 .row button:hover { border-color: var(--accent); }
 .row button.danger { color: var(--critical); border-color: color-mix(in srgb, var(--critical) 45%, var(--line)); }
 .row button.danger:hover { background: color-mix(in srgb, var(--critical) 10%, var(--surface-0)); border-color: var(--critical); }
-.tile .value, .tile .sub { overflow-wrap: anywhere; }
+.tile .sub { overflow-wrap: anywhere; }
+.tile .value.long { font-size: 17px; line-height: 1.75; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
