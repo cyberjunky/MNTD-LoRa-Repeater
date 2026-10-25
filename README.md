@@ -17,10 +17,12 @@ not affiliated with or endorsed by either company; the icon is an original drawi
 | LoRaWAN | Meshtastic |
 |---|---|
 | ![LoRaWAN](docs/screenshots/lorawan.png) | ![Meshtastic](docs/screenshots/meshtastic.png) |
-| **Upstreams** | **Diagnostics** |
-| ![Upstreams](docs/screenshots/upstreams.png) | ![Diagnostics](docs/screenshots/diagnostics.png) |
+| **Upstreams** | **Helium** |
+| ![Upstreams](docs/screenshots/upstreams.png) | ![Helium](docs/screenshots/helium.png) |
+| **Diagnostics** | **About** |
+| ![Diagnostics](docs/screenshots/diagnostics.png) | ![About](docs/screenshots/about.png) |
 
-<sub>Dark theme: [screenshot](docs/screenshots/overview-dark.png). Addresses and identifiers in the screenshots are masked.</sub>
+<sub>Dark theme: [screenshot](docs/screenshots/overview-dark.png). Addresses, identifiers and the Helium hotspot, location, wallet and amounts in the screenshots are masked.</sub>
 
 ## Features
 
