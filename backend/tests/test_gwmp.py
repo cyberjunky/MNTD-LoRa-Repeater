@@ -133,16 +133,16 @@ async def test_upstream_follows_address_change(tmp_path, monkeypatch):
     await db.open()
     mux = GwmpMux(GwmpConfig(listen_port=0, upstreams=[UpstreamConfig(name="ns", host="ns.example", port=1700)]), db)
     mux.loop = asyncio.get_running_loop()
-    answers = iter(["127.0.0.2", "127.0.0.2", "127.0.0.3"])
+    answers = iter([["127.0.0.2"], ["127.0.0.4", "127.0.0.2"], ["127.0.0.3"]])
 
     async def fake_getaddrinfo(host, port, **kw):
-        return [(_socket.AF_INET, _socket.SOCK_DGRAM, 0, "", (next(answers), port))]
+        return [(_socket.AF_INET, _socket.SOCK_DGRAM, 0, "", (ip, port)) for ip in next(answers)]
 
     monkeypatch.setattr(mux.loop, "getaddrinfo", fake_getaddrinfo)
     up = mux.upstreams[0]
     await mux._connect_upstream(up)
     first = up.transport
-    await mux._connect_upstream(up)                  # same address: socket kept
+    await mux._connect_upstream(up)                  # round-robin, ours still listed: kept
     assert up.transport is first and up.addr == ("127.0.0.2", 1700)
     await mux._connect_upstream(up)                  # moved: new socket
     assert up.transport is not first and up.addr == ("127.0.0.3", 1700) and first.is_closing()

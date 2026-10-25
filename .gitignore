@@ -1,6 +1,3 @@
-# Original firmware image is 385 MB; keep it out of git (document the download instead)
-firmware/*.zip
-firmware/*.img
 
 # Python
 .venv/

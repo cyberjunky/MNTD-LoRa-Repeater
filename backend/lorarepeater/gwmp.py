@@ -232,9 +232,10 @@ class GwmpMux:
         except OSError as e:
             log.warning("cannot resolve upstream %s (%s): %s", up.name, up.cfg.host, e)
             return
-        addr = infos[0][4][:2]
-        if up.transport and addr == up.addr:
+        addrs = [i[4][:2] for i in infos]
+        if up.transport and up.addr in addrs:      # DNS round-robin: keep a still-valid address
             return
+        addr = addrs[0]
         if up.transport:
             up.transport.close()
             await self.db.add_event("gwmp", "info", f"upstream {up.name}: {up.cfg.host} moved {up.addr[0]} -> {addr[0]}")
