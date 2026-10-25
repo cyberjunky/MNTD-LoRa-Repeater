@@ -2,7 +2,6 @@ import pytest
 
 from lorarepeater import diag
 from lorarepeater.diag import (
-    decode_throttled,
     filter_log,
     mask_secrets,
     parse_env_file,
@@ -66,12 +65,6 @@ def test_mask_secrets():
     assert m["telegram"]["notify_chat_id"] == 42 and m["web"]["port"] == 8080 and m["empty"]["token"] == ""
 
 
-def test_decode_throttled():
-    assert decode_throttled(0) == []
-    assert decode_throttled(0x50005) == ["under-voltage now", "throttled now",
-                                         "under-voltage since boot", "throttled since boot"]
-
-
 def test_filter_log():
     assert "syncword" not in filter_log(JOURNAL, None, True, 100)
     assert filter_log(JOURNAL, None, True, 100).count("\n") == 1
@@ -92,8 +85,6 @@ def fake_run(monkeypatch):
             return 0, ""
         if cmd[0] == "journalctl":
             return 0, JOURNAL
-        if cmd[0] == "vcgencmd":
-            return 0, "throttled=0x0"
         if cmd[0] == "./chip_id":
             return 0, "Note: chip version is 0x10 (v1.0)\nINFO: concentrator EUI: 0x0016C001FF000001\n"
         return 0, f"{cmd[0]} ok"
@@ -115,7 +106,7 @@ async def test_diag_endpoints(client, fake_run):
     assert (await client.get("/api/diag/log?source=nope")).status_code == 404
 
     sysinfo = (await client.get("/api/diag/system")).json()
-    assert sysinfo["throttled"] == [] and sysinfo["hostname"]
+    assert "undervoltage" in sysinfo and sysinfo["hostname"]
 
     cfg = (await client.get("/api/diag/config")).json()
     assert cfg["web"]["port"] == 8080 and "telegram" in cfg

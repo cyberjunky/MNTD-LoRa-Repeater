@@ -365,14 +365,13 @@
   }
   async function refreshDiagSystem() {
     const s = await api("/api/diag/system"), t = $("#diag-tiles"); t.innerHTML = "";
-    const thr = s.throttled;
     t.append(
       tile("Host", s.hostname, `${s.model || ""} · ${s.os || ""}`),
       tile("Kernel", s.kernel, `${s.machine} · Python ${s.python}`),
       tile("Uptime", fmtDur(s.uptime_s), `load ${(s.load || []).join(" ")}`),
       tile("Memory free", fmtBytes(s.mem_available), `of ${fmtBytes(s.mem_total)}`, s.mem_total && s.mem_available / s.mem_total < 0.1 ? "warning" : "good"),
       tile("Disk free", fmtBytes(s.disk?.free), `of ${fmtBytes(s.disk?.total)}`, s.disk && s.disk.free / s.disk.total < 0.1 ? "warning" : "good"),
-      tile("Power / thermal", thr == null ? "–" : thr.length ? "flags" : "ok", thr == null ? "vcgencmd not available" : thr.length ? thr.join(", ") : `${s.throttled_raw} · no under-voltage or throttling`, thr == null ? "unknown" : thr.length ? "warning" : "good"),
+      tile("Power supply", s.undervoltage == null ? "–" : s.undervoltage ? "under-voltage" : "ok", s.undervoltage == null ? "rpi_volt sensor not found" : s.undervoltage ? "supply voltage too low right now" : "no under-voltage", s.undervoltage == null ? "unknown" : s.undervoltage ? "critical" : "good"),
       tile("Forwarder", s.forwarder_env?.SX1302_RESET_PIN ? `GPIO ${s.forwarder_env.SX1302_RESET_PIN}` : "–", `${s.global_conf?.gateway_ID ? "EUI " + s.global_conf.gateway_ID : "no global_conf"} · HAL ${s.hal_version || "?"} · syncword ${s.forwarder_env?.LGW_SERVICE_SYNCWORD || "default"}`),
     );
   }

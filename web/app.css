@@ -118,3 +118,9 @@ button.sm:hover { color: var(--text-primary); border-color: var(--accent); }
 button:disabled { opacity: .5; cursor: wait; }
 .row label { color: var(--text-secondary); font-size: 13px; display: inline-flex; align-items: center; gap: 4px; }
 .row a { font-size: 13px; }
+
+/* action buttons in card headers look like buttons, not tabs */
+.row button { border-color: var(--line); background: var(--surface-0); color: var(--text-primary); }
+.row button:hover { border-color: var(--accent); }
+.row button.danger { color: var(--critical); border-color: color-mix(in srgb, var(--critical) 45%, var(--line)); }
+.row button.danger:hover { background: color-mix(in srgb, var(--critical) 10%, var(--surface-0)); border-color: var(--critical); }

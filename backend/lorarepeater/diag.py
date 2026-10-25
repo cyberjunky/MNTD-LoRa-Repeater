@@ -102,13 +102,14 @@ def mask_secrets(obj: Any, key: str = "") -> Any:
     return obj
 
 
-def decode_throttled(value: int) -> list[str]:
-    """Bits of `vcgencmd get_throttled` (VideoCore firmware flags)."""
-    names = {0: "under-voltage", 1: "arm frequency capped", 2: "throttled",
-             3: "soft temperature limit"}
-    out = [f"{n} now" for b, n in names.items() if value & (1 << b)]
-    out += [f"{n} since boot" for b, n in names.items() if value & (1 << (b + 16))]
-    return out
+def undervoltage() -> bool | None:
+    """The firmware's under-voltage alarm via the rpi_volt hwmon sensor (readable without root,
+    unlike `vcgencmd`, which needs /dev/vcio)."""
+    for hw in Path("/sys/class/hwmon").glob("hwmon*"):
+        if (_read(hw / "name") or "").strip() == "rpi_volt":
+            alarm = _read(hw / "in0_lcrit_alarm")
+            return alarm.strip() == "1" if alarm else None
+    return None
 
 
 def filter_log(text: str, pattern: str | None, quiet: bool, lines: int) -> str:
@@ -169,10 +170,7 @@ class Diag:
             info["disk"] = None
         model = _read(Path("/proc/device-tree/model"))
         info["model"] = model.rstrip("\0") if model else None
-        rc, out = await run(["vcgencmd", "get_throttled"], 5)
-        m = re.search(r"0x([0-9a-fA-F]+)", out) if rc == 0 else None
-        info["throttled"] = decode_throttled(int(m.group(1), 16)) if m else None
-        info["throttled_raw"] = m.group(0) if m else None
+        info["undervoltage"] = undervoltage()
         info["forwarder_env"] = parse_env_file(_read(FORWARDER_ENV))
         info["global_conf"] = None
         gc = _read(GLOBAL_CONF)
