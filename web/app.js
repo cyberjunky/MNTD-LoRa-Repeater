@@ -255,7 +255,7 @@
     { h: "CRC", f: (r) => r.direction === "down" ? "" : r.stat === 1 ? "ok" : r.stat === -1 ? '<span class="badge bad">bad</span>' : "none" },
     { h: "Forwarded", f: (r) => (Array.isArray(r.forwarded) ? r.forwarded : []).join(", ") || (r.upstream || "") },
   ];
-  const OV_LW_COLS = LW_COLS.filter((c) => !["Vendor", "CR", "Bytes", "Airtime", "MAC", "CRC", "Forwarded"].includes(c.h));  // compact overview
+  const OV_LW_COLS = LW_COLS.filter((c) => ["Time", "Type", "DevAddr / DevEUI", "Network", "FCnt", "DR", "RSSI", "SNR", "Link"].includes(c.h));  // compact overview
   const nodeName = (n) => n ? (n.long_name || n.short_name || hex(n.num)) : null;
   let nodeMap = {};
   const MESH_COLS = [

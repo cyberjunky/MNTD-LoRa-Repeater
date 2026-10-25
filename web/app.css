@@ -144,3 +144,4 @@ button:disabled { opacity: .5; cursor: wait; }
 .prose p.muted { color: var(--text-muted); }
 .links { margin: 0; padding-left: 18px; line-height: 1.9; }
 .tbl.compact td { white-space: nowrap; }
+.card:has(> .tbl.compact) { overflow-x: auto; }   /* a wide compact table scrolls inside its card */
