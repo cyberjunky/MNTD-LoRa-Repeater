@@ -97,6 +97,8 @@ class WebConfig(BaseModel):
     host: str = "0.0.0.0"
     port: int = 8080
     title: str = "MNTD LoRa Repeater"
+    # Folder holding index.html/app.js/app.css. None = auto: /opt/lorarepeater/web, then the repo checkout.
+    dir: Path | None = None
 
 
 class HardwareConfig(BaseModel):

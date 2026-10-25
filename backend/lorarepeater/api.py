@@ -23,7 +23,20 @@ from .mesh import MeshIngest
 
 log = logging.getLogger(__name__)
 
-WEB_DIR = Path(__file__).resolve().parent.parent.parent / "web"
+# Where the GUI files live when installed by install/install.sh, and when run from a repo checkout.
+# The package itself is pip-installed into a venv, so a path relative to __file__ only works for the latter.
+WEB_DIR_CANDIDATES = (
+    Path("/opt/lorarepeater/web"),
+    Path(__file__).resolve().parent.parent.parent / "web",
+)
+
+
+def find_web_dir(configured: Path | None) -> Path | None:
+    """Return the first existing GUI folder: the configured one, else one of WEB_DIR_CANDIDATES."""
+    for cand in ((configured,) if configured else WEB_DIR_CANDIDATES):
+        if cand.is_dir() and (cand / "index.html").is_file():
+            return cand
+    return None
 
 
 def _read_cpu_temp(path: str) -> float | None:
@@ -218,13 +231,17 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, mesh: MeshIngest, gps: G
 
     # -- static GUI -------------------------------------------------------------------
 
-    if WEB_DIR.is_dir():
+    web_dir = find_web_dir(cfg.web.dir)
+    if web_dir:
+        log.info("serving GUI from %s", web_dir)
+
         @app.get("/", include_in_schema=False)
         async def index() -> FileResponse:
-            return FileResponse(WEB_DIR / "index.html")
+            return FileResponse(web_dir / "index.html")
 
-        app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
+        app.mount("/static", StaticFiles(directory=web_dir), name="static")
     else:
-        log.warning("web directory %s not found; GUI disabled", WEB_DIR)
+        log.warning("no web directory found (web.dir=%s, tried %s); GUI disabled",
+                    cfg.web.dir, ", ".join(str(c) for c in WEB_DIR_CANDIDATES))
 
     return app

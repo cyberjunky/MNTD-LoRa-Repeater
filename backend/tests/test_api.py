@@ -65,3 +65,18 @@ async def test_mesh_endpoints(client):
 async def test_events_and_gps(client):
     assert (await client.get("/api/events")).json()[0]["message"] == "test"
     assert (await client.get("/api/gps/history")).json() == []
+
+
+async def test_index_serves_gui(client):
+    r = await client.get("/")
+    assert r.status_code == 200
+    assert "<html" in r.text.lower()
+    r = await client.get("/static/app.js")
+    assert r.status_code == 200
+
+
+def test_find_web_dir(tmp_path):
+    from lorarepeater.api import find_web_dir
+    assert find_web_dir(tmp_path) is None            # no index.html there
+    (tmp_path / "index.html").write_text("<html></html>")
+    assert find_web_dir(tmp_path) == tmp_path

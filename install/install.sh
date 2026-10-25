@@ -253,7 +253,7 @@ cat <<EOF
   Backend conf   : $CONF_DIR/config.yaml   (add your LoRaWAN network servers under gwmp.upstreams)
   Meshtastic     : $MESH
   Web GUI        : http://$(hostname -I 2>/dev/null | awk '{print $1}'):8080/
-  Meshtastic web : https://$(hostname -I 2>/dev/null | awk '{print $1}'):9443/   (meshtasticd modes only)
+$([ "$MESH" = sx1302 ] || [ "$MESH" = none ] || echo "  Meshtastic web : https://$(hostname -I 2>/dev/null | awk '{print $1}'):9443/")
 
 Reboot now so the boot overlays take effect:   sudo reboot
 Then check:  systemctl status lora-pkt-fwd lorarepeater gpsd chrony ; chronyc sources ; gpspipe -w -n 5
