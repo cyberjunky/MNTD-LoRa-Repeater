@@ -194,6 +194,18 @@
   };
 
   // ---------------------------------------------------------------- formatters
+  // link quality from the SNR margin above the LoRa demodulation floor for that spreading factor
+  // (Semtech: SF7 -7.5 dB ... SF12 -20 dB). One gateway cannot give a distance; this says how
+  // much headroom the link has.
+  const SNR_FLOOR = { 5: -2.5, 6: -5, 7: -7.5, 8: -10, 9: -12.5, 10: -15, 11: -17.5, 12: -20 };
+  function linkBadge(snr, datr) {
+    const sfs = String(datr || "").match(/SF(\d+)/gi);
+    if (snr == null || !sfs) return "";
+    const sf = Math.max(...sfs.map((x) => +x.slice(2)));        // slowest rate seen: conservative
+    const margin = snr - SNR_FLOOR[sf];
+    const [label, cls] = margin >= 10 ? ["strong", "up"] : margin >= 5 ? ["good", "up"] : margin >= 2 ? ["fair", ""] : ["edge", "bad"];
+    return `<span class="badge ${cls}" title="${n1(margin, 1)} dB above the SF${sf} floor (${SNR_FLOOR[sf]} dB)">${label}</span>`;
+  }
   const macText = (mac) => (mac || []).map((m) => {
     const { cmd, ...rest } = m;
     if (cmd === "DevStatusAns") return `${cmd} battery ${m.battery === 0 ? "external" : m.battery == null ? "?" : Math.round(m.battery / 2.54) + "%"} margin ${m.margin} dB`;
@@ -237,7 +249,7 @@
     { h: "Flags", f: (r) => [r.adr ? "ADR" : "", r.adr_ack_req ? "ADRreq" : "", r.ack ? "ACK" : "", r.fpending ? (r.direction === "down" ? "FPend" : "ClassB") : ""].filter(Boolean).join(" ") },
     { h: "FCnt", f: (r) => r.fcnt, num: true }, { h: "Port", f: (r) => r.fport, num: true },
     { h: "MHz", f: (r) => n1(r.freq, 3), num: true }, { h: "DR", f: (r) => r.datr || "" }, { h: "CR", f: (r) => r.codr || "" },
-    { h: "RSSI", f: (r) => r.rssi == null ? "" : n1(r.rssi, 0), num: true }, { h: "SNR", f: (r) => r.lsnr == null ? "" : n1(r.lsnr, 1), num: true },
+    { h: "RSSI", f: (r) => r.rssi == null ? "" : n1(r.rssi, 0), num: true }, { h: "SNR", f: (r) => r.lsnr == null ? "" : n1(r.lsnr, 1), num: true }, { h: "Link", f: (r) => r.direction === "up" ? linkBadge(r.lsnr, r.datr) : "" },
     { h: "Bytes", f: (r) => r.size, num: true }, { h: "Airtime", f: (r) => r.airtime_ms == null ? "" : `${n1(r.airtime_ms, 0)} ms`, num: true },
     { h: "MAC", f: (r) => macText(r.mac) || (r.fopts ? `<span class="mono muted" title="encrypted (LoRaWAN 1.1)">${esc(r.fopts)}</span>` : "") },
     { h: "CRC", f: (r) => r.direction === "down" ? "" : r.stat === 1 ? "ok" : r.stat === -1 ? '<span class="badge bad">bad</span>' : "none" },
@@ -263,6 +275,7 @@
     { h: "Hardware", f: (r) => r.hw_model || "" }, { h: "Role", f: (r) => r.role || "" },
     { h: "Last heard", f: (r) => ago(r.last_heard) }, { h: "Hops", f: (r) => r.hops_away, num: true },
     { h: "SNR", f: (r) => r.snr == null ? "" : n1(r.snr, 1), num: true },
+    { h: "Link", f: (r) => r.hops_away === 0 ? linkBadge(r.snr, status?.meshsx?.datr) : r.hops_away > 0 ? '<span class="muted">via relay</span>' : "" },
     { h: "Firmware", f: (r) => esc([r.firmware, r.modem_preset].filter(Boolean).join(" · ")) },
     { h: "Packets", f: (r) => r.packets, num: true },
     { h: "Battery", f: (r) => r.battery == null ? "" : r.battery > 100 ? "mains" : `${r.battery}%`, num: true },
@@ -342,7 +355,7 @@
       { h: "DR", f: (r) => esc(r.datr || "") }, { h: "Ports", f: (r) => esc(r.fports || "") }, { h: "Bytes", f: (r) => r.payload_len == null ? "" : n1(r.payload_len, 0), num: true },
       { h: "ADR", f: (r) => r.adr ? "yes" : "" }, { h: "Battery", f: (r) => r.battery == null ? "" : r.battery === 0 ? "external" : `${Math.round(r.battery / 2.54)}%`, num: true },
       { h: "Margin", f: (r) => r.margin == null ? "" : `${r.margin} dB`, num: true }, { h: "Airtime", f: (r) => `${n1(r.airtime_ms / 1000, 1)} s`, num: true },
-      { h: "RSSI", f: (r) => n1(r.rssi, 0), num: true }, { h: "SNR", f: (r) => n1(r.snr, 1), num: true }, { h: "Last seen", f: (r) => ago(r.last_ts) },
+      { h: "RSSI", f: (r) => n1(r.rssi, 0), num: true }, { h: "SNR", f: (r) => n1(r.snr, 1), num: true }, { h: "Link", f: (r) => linkBadge(r.snr, r.datr) }, { h: "Last seen", f: (r) => ago(r.last_ts) },
     ], s.devices);
     await loadLwLog(true);
   }
