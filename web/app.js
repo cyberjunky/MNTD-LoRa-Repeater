@@ -29,12 +29,14 @@
   };
   let tab = "overview";
   try { tab = localStorage.getItem("tab") || tab; } catch {}
+  if (location.hash.length > 1) tab = location.hash.slice(1);   // bookmarkable: /#diag
   if (!document.getElementById(`tab-${tab}`)) tab = "overview";
   const showTab = (name) => {
     tab = name;
     document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
     document.querySelectorAll(".tab").forEach((s) => s.classList.toggle("active", s.id === `tab-${name}`));
     try { localStorage.setItem("tab", name); } catch {}
+    history.replaceState(null, "", `#${name}`);
     refreshTab(name);
   };
   $("#tabs").onclick = (e) => e.target.dataset.tab && showTab(e.target.dataset.tab);
