@@ -174,9 +174,9 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync, heli
         """What the Helium upstream got offered, and which of it came from Helium devices."""
         since = time.time() - hours * 3600
         totals = await db.fetchone(
-            "SELECT SUM(direction = 'up' AND forwarded LIKE '%\"helium\"%') AS offered, "
-            "SUM(direction = 'up' AND network = 'Helium') AS helium_up, "
-            "SUM(direction = 'down' AND upstream = 'helium') AS helium_down, "
+            "SELECT COALESCE(SUM(direction = 'up' AND forwarded LIKE '%\"helium\"%'), 0) AS offered, "
+            "COALESCE(SUM(direction = 'up' AND network IS 'Helium'), 0) AS helium_up, "
+            "COALESCE(SUM(direction = 'down' AND upstream IS 'helium'), 0) AS helium_down, "
             "COUNT(DISTINCT CASE WHEN network = 'Helium' THEN devaddr END) AS helium_devices "
             "FROM lorawan_packets WHERE ts >= ?", (since,))
         devices = await db.fetch(
