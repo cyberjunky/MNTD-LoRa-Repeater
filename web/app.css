@@ -131,3 +131,4 @@ button:disabled { opacity: .5; cursor: wait; }
 .pager button:hover:not(:disabled) { border-color: var(--accent); }
 .pager button:disabled { opacity: .4; cursor: default; }
 .pager span { margin: 0 6px; }
+.pager[hidden] { display: none; }
