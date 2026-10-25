@@ -40,3 +40,8 @@ async def test_index_serves_gui(client):
     assert r.status_code == 200 and r.headers["cache-control"] == "no-cache"
     assert "cache-control" not in (await client.get("/api/status")).headers
 
+
+
+async def test_helium_traffic(client):
+    r = (await client.get("/api/helium/traffic?hours=6")).json()
+    assert r["totals"]["helium_up"] == 0 and r["devices"] == []

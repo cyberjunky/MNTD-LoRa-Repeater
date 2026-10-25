@@ -169,6 +169,22 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync, heli
     async def helium_view() -> dict[str, Any]:
         return helium.status()
 
+    @app.get("/api/helium/traffic")
+    async def helium_traffic(hours: int = Query(24, le=24 * 90)) -> dict[str, Any]:
+        """What the Helium upstream got offered, and which of it came from Helium devices."""
+        since = time.time() - hours * 3600
+        totals = await db.fetchone(
+            "SELECT SUM(direction = 'up' AND forwarded LIKE '%\"helium\"%') AS offered, "
+            "SUM(direction = 'up' AND network = 'Helium') AS helium_up, "
+            "SUM(direction = 'down' AND upstream = 'helium') AS helium_down, "
+            "COUNT(DISTINCT CASE WHEN network = 'Helium' THEN devaddr END) AS helium_devices "
+            "FROM lorawan_packets WHERE ts >= ?", (since,))
+        devices = await db.fetch(
+            "SELECT devaddr, netid, COUNT(*) AS n, AVG(rssi) AS rssi, AVG(lsnr) AS snr, GROUP_CONCAT(DISTINCT datr) AS datr, "
+            "MAX(fcnt) AS fcnt, MAX(ts) AS last_ts FROM lorawan_packets WHERE ts >= ? AND network = 'Helium' "
+            "GROUP BY devaddr ORDER BY n DESC", (since,))
+        return {"hours": hours, "totals": totals, "devices": devices}
+
     @app.get("/api/helium/nearby")
     async def helium_nearby() -> dict[str, Any]:
         return await helium.nearby()

@@ -492,7 +492,15 @@
   }
 
   async function refreshHelium() {
-    const [s, ups] = await Promise.all([api("/api/helium"), api("/api/lorawan/upstreams")]);
+    const [s, ups, tr] = await Promise.all([api("/api/helium"), api("/api/lorawan/upstreams"), api(`/api/helium/traffic?hours=${hours()}`)]);
+    const tt = tr.totals || {};
+    $("#he-traffic-info").textContent = `last ${tr.hours} h · ${(tt.offered || 0).toLocaleString()} uplinks offered to Helium · ${tt.helium_up || 0} from Helium devices · ${tt.helium_down || 0} Helium downlinks`;
+    table($("#he-traffic"), [
+      { h: "DevAddr", f: (r) => `<span class="mono">${esc(r.devaddr)}</span>` }, { h: "NetID", f: (r) => esc(r.netid || "") },
+      { h: "Packets", f: (r) => r.n, num: true }, { h: "Last FCnt", f: (r) => r.fcnt, num: true }, { h: "DR", f: (r) => esc(r.datr || "") },
+      { h: "RSSI", f: (r) => n1(r.rssi, 0), num: true }, { h: "SNR", f: (r) => n1(r.snr, 1), num: true }, { h: "Link", f: (r) => linkBadge(r.snr, r.datr) },
+      { h: "Last seen", f: (r) => ago(r.last_ts) },
+    ], tr.devices, { empty: "No Helium devices heard in this period: everything offered to Helium belongs to other networks, so Helium drops it and there is nothing to earn data rewards with." });
     const tiles = $("#he-tiles"), note = $("#he-note"); tiles.innerHTML = "";
     if (!s.enabled) { note.hidden = false; note.innerHTML = "<h3>Helium view disabled</h3><p>Set <span class=\"mono\">helium.enabled: true</span> in config.yaml.</p>"; return; }
     if (!s.updated) { note.hidden = false; note.innerHTML = "<h3>Collecting…</h3><p>The first Helium snapshot arrives about 10 seconds after the backend starts, then every 15 minutes.</p>"; return; }
