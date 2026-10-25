@@ -70,7 +70,8 @@ have_i2c() { echo "$I2C_DETECT" | grep -qiE "(^| )$1( |$)"; }
 HAVE_GPS=0; HAVE_ECC=0; HAVE_EEPROM=0; HAVE_LED=0
 have_i2c 42 && HAVE_GPS=1
 have_i2c 60 && HAVE_ECC=1
-(have_i2c 50 || have_i2c UU && [ -e /sys/bus/i2c/devices/1-0050/eeprom ]) && HAVE_EEPROM=1
+# 0x50 answers directly, or shows as UU once the at24 driver has claimed it
+if have_i2c 50 || [ -e /sys/bus/i2c/devices/1-0050/eeprom ]; then HAVE_EEPROM=1; fi
 (have_i2c 30 || echo "$I2C_DETECT" | grep -q "30: UU") && HAVE_LED=1
 echo "I2C: gps=$HAVE_GPS ecc608=$HAVE_ECC eeprom=$HAVE_EEPROM lp5562=$HAVE_LED"
 if [ "$RESET_PIN" = "auto" ]; then
@@ -94,8 +95,9 @@ install -m 755 "$REPO_DIR/install/bin/reset_lgw.sh" /usr/local/bin/reset_lgw.sh
 # ------------------------------------------------------------------------------------------
 log "5/9 probing the concentrator"
 probe_pin() {
-    SX1302_RESET_PIN="$1" /usr/local/bin/reset_lgw.sh start >/dev/null 2>&1 || return 1
-    (cd "$HAL_DIR/util_chip_id" && SX1302_RESET_PIN="$1" timeout 20 ./chip_id -d /dev/spidev0.0 2>&1 | tee /tmp/chip_id.log | grep -q "concentrator EUI")
+    # one log per pin so both attempts can be inspected afterwards
+    SX1302_RESET_PIN="$1" /usr/local/bin/reset_lgw.sh start >"/tmp/chip_id_gpio$1.log" 2>&1 || return 1
+    (cd "$HAL_DIR/util_chip_id" && SX1302_RESET_PIN="$1" timeout 20 ./chip_id -d /dev/spidev0.0 2>&1 | tee -a "/tmp/chip_id_gpio$1.log" | grep -q "concentrator EUI")
 }
 if probe_pin "$RESET_PIN"; then
     echo "SX1302 answers with reset on GPIO $RESET_PIN"
@@ -103,9 +105,9 @@ else
     OTHER=$([ "$RESET_PIN" = 25 ] && echo 17 || echo 25)
     warn "no answer with GPIO $RESET_PIN, trying GPIO $OTHER"
     if probe_pin "$OTHER"; then RESET_PIN=$OTHER; echo "SX1302 answers with reset on GPIO $RESET_PIN"
-    else warn "concentrator did not answer on either pin (see /tmp/chip_id.log); continuing with GPIO $RESET_PIN"; fi
+    else warn "concentrator did not answer on either pin (see /tmp/chip_id_gpio*.log); continuing with GPIO $RESET_PIN"; fi
 fi
-GW_EUI="$(grep -o 'EUI: 0x[0-9A-Fa-f]*' /tmp/chip_id.log 2>/dev/null | head -1 | sed 's/EUI: 0x//' | tr a-f A-F || true)"
+GW_EUI="$(grep -ho 'EUI: 0x[0-9A-Fa-f]*' "/tmp/chip_id_gpio$RESET_PIN.log" 2>/dev/null | head -1 | sed 's/EUI: 0x//' | tr a-f A-F || true)"
 if [ -z "$GW_EUI" ]; then
     MAC="$(cat /sys/class/net/eth0/address | tr -d ':' | tr a-f A-F)"
     GW_EUI="${MAC:0:6}FFFE${MAC:6:6}"
