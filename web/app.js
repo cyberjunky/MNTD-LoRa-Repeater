@@ -100,7 +100,7 @@
       f.svg.append(hit);
     });
     const ax = svgEl("g", { class: "axis" });
-    [0, Math.floor(data.length / 2), data.length - 1].forEach((i) => { if (!data[i]) return; const t = svgEl("text", { x: f.x0 + i * bw + bw / 2, y: f.H - 6, "text-anchor": i === 0 ? "start" : i === data.length - 1 ? "end" : "middle" }); t.textContent = fmtTime(data[i].t); ax.append(t); });
+    [0, Math.floor(data.length / 2), data.length - 1].forEach((i) => { if (!data[i]) return; const t = svgEl("text", { x: f.x0 + i * bw + bw / 2, y: f.H - 6, "text-anchor": i === 0 ? "start" : i === data.length - 1 ? "end" : "middle" }); t.textContent = data[data.length - 1].t - data[0].t > 2 * 86400 ? new Date(data[i].t * 1000).toLocaleDateString() : fmtTime(data[i].t); ax.append(t); });
     f.svg.append(ax);
     legend(container, names, col);
   }
@@ -470,9 +470,8 @@
       tile("Asserted location", h.city || "–", `${h.gain_dbi != null ? h.gain_dbi + " dBi" : ""}${h.elevation_m != null ? ` · ${h.elevation_m} m` : ""}`),
       tile("HNT earned", fmtAmt(t.HNT?.lifetime, 4), eur && t.HNT ? `≈ € ${fmtAmt(t.HNT.lifetime * eur)} at € ${fmtAmt(eur, 3)}/HNT` : "lifetime"),
       tile("IOT earned", fmtAmt(t.IOT?.lifetime, 0), "lifetime, before HIP-138"),
-      tile("Unclaimed", `${fmtAmt(t.HNT?.unclaimed, 4)} HNT`, `${fmtAmt(t.IOT?.unclaimed, 0)} IOT`, (t.HNT?.unclaimed || 0) > 0 ? "warning" : "good"),
+      tile("Unclaimed", `${fmtAmt(t.HNT?.unclaimed, 4)} HNT`, `${fmtAmt(t.IOT?.unclaimed, 0)} IOT${lastClaim ? ` · last claim ${new Date(lastClaim * 1000).toLocaleDateString()}` : ""}`, (t.HNT?.unclaimed || 0) > 0 ? "warning" : "good"),
       tile("Wallet", wal.balances ? `${fmtAmt(wal.balances.HNT, 3)} HNT` : "–", wal.balances && eur ? `≈ € ${fmtAmt(wal.balances.HNT * eur)} · ${fmtAmt(wal.balances.SOL, 3)} SOL` : ""),
-      tile("Last claim", lastClaim ? ago(lastClaim) : "–", lastClaim ? new Date(lastClaim * 1000).toLocaleDateString() : ""),
     );
     const cum = (claims) => { let c = 0; return [...(claims || [])].sort((a, b) => a.time - b.time).map((x) => ({ t: x.time, v: (c += x.amount) })); };
     lines($("#chart-he-hnt"), cum(t.HNT?.claims), ["v"], ["HNT"], { fmtVal: (v) => n1(v, 2), min: 0 });
