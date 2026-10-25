@@ -156,14 +156,42 @@
   const tile = (label, value, sub = "", status = null) => el("div", { class: "tile" },
     el("div", { class: "label" }, ...(status ? [el("span", { class: `status ${status}` })] : []), label),
     el("div", { class: String(value).length > 11 ? "value long" : "value" }, value), el("div", { class: "sub" }, sub));
-  function table(node, cols, rows, { empty: emptyMsg = "nothing yet" } = {}) {
-    node.innerHTML = "";
-    if (!rows.length) { node.append(el("tr", {}, el("td", { class: "empty", colspan: cols.length }, emptyMsg))); return; }
-    node.append(el("tr", {}, ...cols.map((c) => el("th", { class: c.num ? "num" : "" }, c.h))));
-    for (const r of rows) node.append(rowEl(cols, r));
+  // tables keep their rows and render one page at a time; the pager sits right below the table
+  const PAGE_SIZE = 25;
+  function table(node, cols, rows, { empty: emptyMsg = "nothing yet", pageSize = PAGE_SIZE } = {}) {
+    node._t = { cols, rows: [...rows], page: 0, size: pageSize, empty: emptyMsg };
+    renderTable(node);
   }
+  function renderTable(node, flashFirst = false) {
+    const t = node._t, pages = Math.max(1, Math.ceil(t.rows.length / t.size));
+    t.page = Math.min(t.page, pages - 1);
+    node.innerHTML = "";
+    if (!t.rows.length) node.append(el("tr", {}, el("td", { class: "empty", colspan: t.cols.length }, t.empty)));
+    else {
+      node.append(el("tr", {}, ...t.cols.map((c) => el("th", { class: c.num ? "num" : "" }, c.h))));
+      t.rows.slice(t.page * t.size, (t.page + 1) * t.size).forEach((r, i) => {
+        const tr = rowEl(t.cols, r); if (flashFirst && i === 0) tr.classList.add("new"); node.append(tr);
+      });
+    }
+    let pager = node.nextElementSibling?.classList.contains("pager") ? node.nextElementSibling : null;
+    if (!pager) { pager = el("div", { class: "pager" }); node.after(pager); }
+    pager.hidden = pages < 2;
+    pager.innerHTML = "";
+    const go = (p) => { t.page = p; renderTable(node); };
+    const btn = (label, p, off) => { const b = el("button", {}, label); b.disabled = off; b.onclick = () => go(p); return b; };
+    pager.append(btn("«", 0, t.page === 0), btn("‹ Prev", t.page - 1, t.page === 0),
+      el("span", {}, `page ${t.page + 1} of ${pages} · ${t.rows.length} rows`),
+      btn("Next ›", t.page + 1, t.page >= pages - 1), btn("»", pages - 1, t.page >= pages - 1));
+  }
+  const appendRows = (node, rows) => { node._t.rows.push(...rows); renderTable(node); };
   const rowEl = (cols, r) => el("tr", {}, ...cols.map((c) => { const v = c.f(r); const td = el("td", { class: c.num ? "num" : "" }); typeof v === "string" && v.startsWith("<") ? (td.innerHTML = v) : td.append(v ?? "–"); return td; }));
-  const prepend = (node, cols, r) => { const tr = rowEl(cols, r); tr.classList.add("new"); const first = node.querySelector("tr:nth-child(2)"); first ? first.before(tr) : node.append(tr); if (node.rows.length > 101) node.deleteRow(-1); };
+  const prepend = (node, cols, r) => {      // live feed: newest first; only redraw when page 1 is shown
+    if (!node._t) table(node, cols, []);
+    node._t.rows.unshift(r);
+    if (node._t.rows.length > 2000) node._t.rows.length = 2000;
+    if (node._t.page === 0) renderTable(node, true);
+    else renderTable(node);
+  };
 
   // ---------------------------------------------------------------- formatters
   const macText = (mac) => (mac || []).map((m) => {
@@ -280,13 +308,13 @@
 
   async function refreshOverview() {
     const h = hours();
-    const [lw, mesh, lwp, mp] = await Promise.all([api(`/api/lorawan/summary?hours=${h}`), api(`/api/mesh/summary?hours=${h}`), api("/api/lorawan/packets?limit=12"), api("/api/mesh/packets?limit=12")]);
+    const [lw, mesh, lwp, mp] = await Promise.all([api(`/api/lorawan/summary?hours=${h}`), api(`/api/mesh/summary?hours=${h}`), api("/api/lorawan/packets?limit=240"), api("/api/mesh/packets?limit=240")]);
     $("#lw-range").textContent = `last ${h} h · ${lw.totals.total || 0} total`;
     $("#mesh-range").textContent = `last ${h} h · ${mesh.totals.total || 0} total`;
     stackedBars($("#chart-lw-time"), pivot(lw.per_bucket, lw.bucket_s, h, "direction", ["up", "down"]), ["up", "down"], ["uplinks", "downlinks"]);
     stackedBars($("#chart-mesh-time"), fill(mesh.per_bucket.map((b) => ({ t: b.t, heard: b.n - (b.tx || 0), relayed: b.relayed_by_us || 0, tx: b.tx || 0 })), mesh.bucket_s, h, ["heard", "relayed", "tx"]), ["heard", "relayed", "tx"], ["heard", "relayed by us", "sent by us"]);
-    table($("#ov-lw"), LW_COLS.slice(0, 11), lwp);
-    table($("#ov-mesh"), MESH_COLS.slice(0, 9).concat(MESH_COLS.slice(-1)), mp);
+    table($("#ov-lw"), LW_COLS.slice(0, 11), lwp, { pageSize: 12 });
+    table($("#ov-mesh"), MESH_COLS.slice(0, 9).concat(MESH_COLS.slice(-1)), mp, { pageSize: 12 });
   }
 
   const LW_STATE = { oldest: null };
@@ -320,12 +348,12 @@
     await loadLwLog(true);
   }
   async function loadLwLog(reset) {
-    const q = new URLSearchParams({ limit: 50 });
+    const q = new URLSearchParams({ limit: 500 });
     if ($("#lw-dir").value) q.set("direction", $("#lw-dir").value);
     if ($("#lw-devaddr").value.trim()) q.set("devaddr", $("#lw-devaddr").value.trim());
     if (!reset && LW_STATE.oldest) q.set("before_id", LW_STATE.oldest);
     const rows = await api(`/api/lorawan/packets?${q}`);
-    if (reset) table($("#lw-log"), LW_COLS, rows); else rows.forEach((r) => $("#lw-log").append(rowEl(LW_COLS, r)));
+    if (reset) table($("#lw-log"), LW_COLS, rows); else appendRows($("#lw-log"), rows);
     if (rows.length) LW_STATE.oldest = rows[rows.length - 1].id;
   }
   $("#lw-more").onclick = () => loadLwLog(false);
@@ -358,11 +386,11 @@
   }
   const msgEl = (m) => el("div", { class: "msg" }, el("div", {}, m.text), el("div", { class: "meta" }, `${nodeName(nodeMap[m.from_node]) || hex(m.from_node)} → ${m.to_node === 0xffffffff ? "all" : nodeName(nodeMap[m.to_node]) || hex(m.to_node)} · ch ${m.channel} · ${fmtTs(m.ts)} · ${m.hops_used ?? "?"} hops · SNR ${n1(m.snr, 1)}`));
   async function loadMeshLog(reset) {
-    const q = new URLSearchParams({ limit: 50 });
+    const q = new URLSearchParams({ limit: 500 });
     if ($("#mesh-port").value) q.set("portnum", $("#mesh-port").value);
     if (!reset && MESH_STATE.oldest) q.set("before_id", MESH_STATE.oldest);
     const rows = await api(`/api/mesh/packets?${q}`);
-    if (reset) table($("#mesh-log"), MESH_COLS, rows); else rows.forEach((r) => $("#mesh-log").append(rowEl(MESH_COLS, r)));
+    if (reset) table($("#mesh-log"), MESH_COLS, rows); else appendRows($("#mesh-log"), rows);
     if (rows.length) MESH_STATE.oldest = rows[rows.length - 1].id;
   }
   $("#mesh-more").onclick = () => loadMeshLog(false);
