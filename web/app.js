@@ -159,7 +159,7 @@
   function table(node, cols, rows, { empty: emptyMsg = "nothing yet" } = {}) {
     node.innerHTML = "";
     if (!rows.length) { node.append(el("tr", {}, el("td", { class: "empty", colspan: cols.length }, emptyMsg))); return; }
-    node.append(el("tr", {}, ...cols.map((c) => el("th", {}, c.h))));
+    node.append(el("tr", {}, ...cols.map((c) => el("th", { class: c.num ? "num" : "" }, c.h))));
     for (const r of rows) node.append(rowEl(cols, r));
   }
   const rowEl = (cols, r) => el("tr", {}, ...cols.map((c) => { const v = c.f(r); const td = el("td", { class: c.num ? "num" : "" }); typeof v === "string" && v.startsWith("<") ? (td.innerHTML = v) : td.append(v ?? "–"); return td; }));
