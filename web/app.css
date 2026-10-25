@@ -57,7 +57,7 @@ main { padding: 16px 24px; max-width: 1800px; margin: 0 auto; }
 .muted { color: var(--text-muted); font-weight: 400; text-transform: none; letter-spacing: 0; }
 
 /* stat tiles */
-.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .tile { background: var(--surface-1); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
 .tile .label { font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
 .tile .value { font-size: 24px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
@@ -125,4 +125,4 @@ button:disabled { opacity: .5; cursor: wait; }
 .row button.danger { color: var(--critical); border-color: color-mix(in srgb, var(--critical) 45%, var(--line)); }
 .row button.danger:hover { background: color-mix(in srgb, var(--critical) 10%, var(--surface-0)); border-color: var(--critical); }
 .tile .sub { overflow-wrap: anywhere; }
-.tile .value.long { font-size: 17px; line-height: 1.75; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile .value.long { font-size: 15px; line-height: 2; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
