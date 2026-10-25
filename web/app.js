@@ -291,7 +291,7 @@
   const LW_STATE = { oldest: null };
   async function refreshLorawan() {
     const h = hours();
-    const [s, ups] = await Promise.all([api(`/api/lorawan/summary?hours=${h}`), api("/api/lorawan/upstreams")]);
+    const s = await api(`/api/lorawan/summary?hours=${h}`);
     const t = s.totals, tiles = $("#lw-tiles"); tiles.innerHTML = "";
     tiles.append(tile("Uplinks", `${t.up || 0}`, `last ${h} h`), tile("Downlinks", `${t.down || 0}`, `last ${h} h`),
       tile("CRC errors", `${t.crc_bad || 0}`, t.up ? `${(100 * (t.crc_bad || 0) / t.up).toFixed(1)} % of uplinks` : ""),
@@ -308,12 +308,6 @@
     ], s.joins, { empty: "no join requests yet" });
     hBars($("#chart-lw-freq"), s.by_freq.filter((r) => r.freq).map((r) => ({ label: n1(r.freq, 1) + " MHz", value: r.n, rssi: r.rssi })), { extra: (d) => `${n1(d.rssi, 0)} dBm` });
     hBars($("#chart-lw-datr"), s.by_datr.filter((r) => r.datr).map((r) => ({ label: r.datr, value: r.n })), { color: 1 });
-    table($("#lw-upstreams"), [
-      { h: "Name", f: (r) => r.name }, { h: "Host", f: (r) => `${r.host}:${r.port}` },
-      { h: "Pushed", f: (r) => r.push_sent, num: true }, { h: "Acked", f: (r) => r.push_acked, num: true },
-      { h: "Ack rate", f: (r) => r.push_sent ? `${(100 * r.push_acked / r.push_sent).toFixed(1)} %` : "", num: true },
-      { h: "Downlinks", f: (r) => r.pull_resp, num: true }, { h: "Last PULL_ACK", f: (r) => ago(r.last_pull_ack) },
-    ], ups, { empty: "no upstream networks configured (see /etc/lorarepeater/config.yaml)" });
     table($("#lw-devices"), [
       { h: "DevAddr", f: (r) => `<span class="mono">${r.devaddr}</span>` }, { h: "Network", f: (r) => esc(r.network || `NetID ${r.netid || "?"}`) },
       { h: "Packets", f: (r) => r.n, num: true }, { h: "Last FCnt", f: (r) => r.fcnt, num: true },
@@ -372,6 +366,38 @@
   }
   $("#mesh-more").onclick = () => loadMeshLog(false);
   $("#mesh-port").onchange = () => loadMeshLog(true);
+
+  async function refreshUpstreams() {
+    const [ups, downs] = await Promise.all([api("/api/lorawan/upstreams"), api("/api/lorawan/packets?direction=down&limit=100")]);
+    const live = Object.fromEntries((status?.gwmp?.upstreams || []).map((u) => [u.name, u]));
+    const eui = status?.gwmp?.gateway_eui || "?";
+    const tiles = $("#up-tiles"); tiles.innerHTML = "";
+    for (const u of ups) {
+      const l = live[u.name] || {}, rate = u.push_sent ? 100 * u.push_acked / u.push_sent : null;
+      tiles.append(tile(u.name, l.alive ? "connected" : u.push_sent ? "no answer" : "idle",
+        `${u.host}:${u.port}${l.rx_only ? " · rx only" : ""} · ${l.last_pull_ack_s_ago != null ? `last ack ${l.last_pull_ack_s_ago}s ago` : "never acked"}${rate != null ? ` · ack ${rate.toFixed(0)} %` : ""}`,
+        l.alive ? "good" : u.push_sent ? "critical" : "unknown"));
+    }
+    tiles.append(tile("Gateway EUI", eui, "register this EUI at each network"));
+    const help = $("#up-help"), silent = ups.filter((u) => u.push_sent > 0 && !u.push_acked);
+    help.hidden = !(silent.length || !ups.length);
+    help.innerHTML = !ups.length
+      ? `<h3>No upstream networks</h3><p>Add one under <span class="mono">gwmp.upstreams</span> in <span class="mono">/etc/lorarepeater/config.yaml</span> and restart lorarepeater. Everything is still logged locally.</p>`
+      : `<h3>${silent.map((u) => esc(u.name)).join(", ")}: packets sent, nothing acknowledged</h3>
+         <p>Network servers ignore gateways that are not registered to an account. Register gateway EUI <b class="mono">${esc(eui)}</b>${silent.some((u) => /thethings/.test(u.host)) ? ` in the <a href="https://eu1.cloud.thethings.network/console/gateways/add" target="_blank" rel="noopener">TTN console (Europe 1)</a> with frequency plan <i>Europe 863-870 MHz (SF9 for RX2 - recommended)</i>` : ""}. Acknowledgements start within a minute.</p>`;
+    table($("#up-table"), [
+      { h: "Name", f: (r) => r.name }, { h: "Host", f: (r) => `${r.host}:${r.port}` },
+      { h: "Uplinks pushed", f: (r) => r.push_sent, num: true }, { h: "Acked", f: (r) => r.push_acked, num: true },
+      { h: "Ack rate", f: (r) => r.push_sent ? `${(100 * r.push_acked / r.push_sent).toFixed(1)} %` : "", num: true },
+      { h: "Downlinks", f: (r) => r.pull_resp, num: true }, { h: "Last PUSH_ACK", f: (r) => ago(r.last_push_ack) }, { h: "Last PULL_ACK", f: (r) => ago(r.last_pull_ack) },
+    ], ups, { empty: "no upstream networks configured" });
+    table($("#up-downlinks"), [
+      { h: "Time", f: (r) => fmtTs(r.ts) }, { h: "From", f: (r) => esc(r.upstream || "") }, { h: "Type", f: (r) => r.mtype || "" },
+      { h: "DevAddr", f: (r) => `<span class="mono">${esc(r.devaddr || "")}</span>` }, { h: "MHz", f: (r) => n1(r.freq, 3), num: true }, { h: "DR", f: (r) => r.datr || "" },
+      { h: "Airtime", f: (r) => r.airtime_ms == null ? "" : `${n1(r.airtime_ms, 0)} ms`, num: true }, { h: "MAC", f: (r) => esc(macText(r.mac)) },
+      { h: "Result", f: (r) => (Array.isArray(r.forwarded) && r.forwarded.length ? r.forwarded.join(", ") : "sent to radio") },
+    ], downs, { empty: "no downlinks yet" });
+  }
 
   async function refreshEvents() { table($("#events"), EVENT_COLS, await api("/api/events?limit=200")); }
 
@@ -512,7 +538,7 @@
   }
 
   // ---------------------------------------------------------------- orchestration
-  const refreshTab = (name) => ({ overview: refreshOverview, lorawan: refreshLorawan, mesh: refreshMesh, events: refreshEvents, diag: refreshDiag }[name]().catch(console.error));
+  const refreshTab = (name) => ({ overview: refreshOverview, lorawan: refreshLorawan, mesh: refreshMesh, upstreams: refreshUpstreams, events: refreshEvents, diag: refreshDiag }[name]().catch(console.error));
   async function refreshAll() { try { await refreshStatus(); await refreshTab(tab); } catch (e) { console.error(e); } }
   showTab(tab);
   refreshStatus().catch(console.error);

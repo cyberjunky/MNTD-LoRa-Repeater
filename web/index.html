@@ -14,6 +14,7 @@
     <button data-tab="overview" class="active">Overview</button>
     <button data-tab="lorawan">LoRaWAN</button>
     <button data-tab="mesh">Meshtastic</button>
+    <button data-tab="upstreams">Upstreams</button>
     <button data-tab="events">Events</button>
     <button data-tab="diag">Diagnostics</button>
   </nav>
@@ -52,7 +53,6 @@
       <figure class="card"><figcaption>Uplinks per channel (count, mean RSSI)</figcaption><div class="chart" id="chart-lw-freq"></div></figure>
       <figure class="card"><figcaption>Uplinks by data rate</figcaption><div class="chart" id="chart-lw-datr"></div></figure>
     </div>
-    <div class="card"><h3>Upstream networks</h3><table class="tbl" id="lw-upstreams"></table></div>
     <div class="grid2">
       <div class="card"><h3>Networks <span class="muted">(from the DevAddr NetID)</span></h3><table class="tbl" id="lw-networks"></table></div>
       <div class="card"><h3>MAC commands <span class="muted">(unencrypted FOpts)</span></h3><table class="tbl compact" id="lw-mac"></table></div>
@@ -89,6 +89,14 @@
     </div>
   </section>
 
+
+  <!-- ============================ UPSTREAMS =========================== -->
+  <section id="tab-upstreams" class="tab">
+    <div class="tiles" id="up-tiles"></div>
+    <div class="card" id="up-help" hidden></div>
+    <div class="card"><h3>Upstream networks <span class="muted">(LoRaWAN network servers this gateway forwards to, Semtech UDP)</span></h3><table class="tbl" id="up-table"></table></div>
+    <div class="card"><h3>Downlinks <span class="muted">(transmissions requested by an upstream)</span></h3><table class="tbl" id="up-downlinks"></table></div>
+  </section>
 
   <!-- ============================ EVENTS ============================== -->
   <section id="tab-events" class="tab">
