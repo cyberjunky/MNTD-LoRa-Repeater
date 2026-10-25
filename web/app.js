@@ -341,7 +341,7 @@
       tile("Networks", `${s.by_network.length}`, s.by_network.slice(0, 3).map((r) => r.network).join(", ")),
       tile("Airtime", `${n1(t.airtime_s, 1)} s`, `heard in ${h} h`));
     table($("#lw-networks"), [{ h: "Network", f: (r) => esc(r.network) }, { h: "Devices", f: (r) => r.devices, num: true }, { h: "Packets", f: (r) => r.n, num: true }], s.by_network);
-    table($("#lw-mac"), [{ h: "Time", f: (r) => fmtTime(r.ts) }, { h: "DevAddr", f: (r) => `<span class="mono">${r.devaddr}</span>` }, { h: "Dir", f: (r) => r.direction }, { h: "Commands", f: (r) => esc(macText(r.mac)) }], s.mac, { empty: "no MAC commands in the clear yet" });
+    table($("#lw-mac"), [{ h: "Time", f: (r) => fmtTime(r.ts) }, { h: "DevAddr", f: (r) => `<span class="mono">${r.devaddr}</span>` }, { h: "Dir", f: (r) => r.direction === "down" ? "↓ sent by us" : /Down/.test(r.mtype || "") ? "↓ heard" : "↑ uplink" }, { h: "Commands", f: (r) => esc(macText(r.mac)) }], s.mac, { empty: "no MAC commands in the clear yet" });
     table($("#lw-joins"), [
       { h: "DevEUI", f: (r) => `<span class="mono">${r.dev_eui}</span>` }, { h: "Device vendor", f: (r) => esc(r.dev_vendor || "") },
       { h: "JoinEUI", f: (r) => `<span class="mono">${r.join_eui || ""}</span>` }, { h: "Join server vendor", f: (r) => esc(r.join_vendor || "") },

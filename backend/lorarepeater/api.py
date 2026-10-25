@@ -151,7 +151,7 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync,
             "SELECT COALESCE(network, 'NetID ' || netid) AS network, COUNT(*) AS n, COUNT(DISTINCT devaddr) AS devices "
             "FROM lorawan_packets WHERE ts >= ? AND netid IS NOT NULL GROUP BY 1 ORDER BY n DESC", (since,))
         mac = await db.fetch(
-            "SELECT devaddr, direction, mac, ts FROM lorawan_packets WHERE ts >= ? AND mac IS NOT NULL ORDER BY id DESC LIMIT 100", (since,))
+            "SELECT devaddr, direction, mtype, mac, ts FROM lorawan_packets WHERE ts >= ? AND mac IS NOT NULL ORDER BY id DESC LIMIT 100", (since,))
         for r in mac:
             r["mac"] = json.loads(r["mac"])
         totals = await db.fetchone(
