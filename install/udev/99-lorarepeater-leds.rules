@@ -1,0 +1,3 @@
+# Let the gpio group (the lorarepeater service user) drive the Pi's ACT and PWR LEDs,
+# which the Goldspot enclosure pipes to the front. See backend/lorarepeater/led.py.
+SUBSYSTEM=="leds", ACTION=="add", KERNEL=="ACT|PWR", RUN+="/bin/chgrp gpio /sys%p/brightness /sys%p/trigger", RUN+="/bin/chmod g+w /sys%p/brightness /sys%p/trigger"

@@ -390,11 +390,20 @@ class MeshSxEngine:
         data = mesh_pb2.Data(portnum=portnums_pb2.PortNum.Value("NODEINFO_APP"), payload=user.SerializeToString())
         await self._send_data(data, BROADCAST, self.channels[0], kind="nodeinfo")
 
+    def _position(self) -> dict[str, Any] | None:
+        """Live GPS fix if there is one, else the configured site position."""
+        fix = getattr(self.gps, "fix", None) if self.gps else None
+        if fix and fix.get("lat") is not None:
+            return fix
+        if self.cfg.position:
+            return {"lat": self.cfg.position.lat, "lon": self.cfg.position.lon, "alt": self.cfg.position.alt}
+        return None
+
     async def send_position(self) -> bool:
-        if not self.gps or not getattr(self.gps, "fix", None) or self.gps.fix.get("lat") is None:
+        f = self._position()
+        if f is None:
             return False
         mesh_pb2, portnums_pb2, _, _ = _pb()
-        f = self.gps.fix
         bits = self.cfg.position_precision_bits
         lat_i, lon_i = int(f["lat"] * 1e7), int(f["lon"] * 1e7)
         if 0 < bits < 32:  # same coarsening the firmware applies for "approximate" positions

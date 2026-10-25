@@ -48,6 +48,12 @@ class MeshChannelConfig(BaseModel):
     psk: str = "AQ=="  # base64. "AQ==" = Meshtastic default key #1, "" = unencrypted, 16/32 bytes = own key
 
 
+class StaticPosition(BaseModel):
+    lat: float
+    lon: float
+    alt: float = 0.0
+
+
 class MeshSxConfig(BaseModel):
     """Meshtastic node on the SX1302's service channel (needs the patched sx1302_hal)."""
 
@@ -68,6 +74,7 @@ class MeshSxConfig(BaseModel):
     nodeinfo_interval_s: float = 3600.0
     position_broadcast: bool = False
     position_precision_bits: int = 16   # 32 = exact, 16 = about 1.5 km, as in the Meshtastic app
+    position: StaticPosition | None = None   # fixed site position (no GPS on this hardware)
     channels: list[MeshChannelConfig] = Field(default_factory=lambda: [MeshChannelConfig()])
 
 
@@ -83,9 +90,13 @@ class TelegramConfig(BaseModel):
 
 
 class GpsConfig(BaseModel):
-    """GPS fix from gpsd and time-sync state from chrony."""
+    """Time-sync state from chrony, and a GPS fix from gpsd when a receiver is attached.
 
-    enabled: bool = True
+    The Goldspot HAT does not wire the RAK2287's GNSS to the Pi (no I2C, no UART, no antenna
+    cable), so gpsd is off by default; the chrony part always runs.
+    """
+
+    enabled: bool = False
     gpsd_host: str = "127.0.0.1"
     gpsd_port: int = 2947
     reconnect_s: float = 15.0
@@ -104,8 +115,7 @@ class WebConfig(BaseModel):
 class HardwareConfig(BaseModel):
     """Optional on-box helpers (LED, temperature). Not needed on a dev machine."""
 
-    led_enabled: bool = False
-    led_i2c_path: str = "/sys/bus/i2c/devices/1-0030"
+    led_enabled: bool = True          # health on the Pi's ACT/PWR LEDs (front light pipes)
     cpu_temp_path: str = "/sys/class/thermal/thermal_zone0/temp"
     hal_dir: str = "/opt/sx1302_hal"                 # for the Diagnostics concentrator probe
     reset_script: str = "/usr/local/bin/reset_lgw.sh"

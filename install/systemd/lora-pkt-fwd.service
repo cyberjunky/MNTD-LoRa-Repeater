@@ -1,7 +1,6 @@
 [Unit]
 Description=Semtech SX1302 LoRa packet forwarder (RAK2287)
-After=network.target lorarepeater-gps-bridge.service
-Wants=lorarepeater-gps-bridge.service
+After=network.target
 
 [Service]
 Type=simple

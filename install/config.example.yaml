@@ -38,8 +38,9 @@ meshsx:
   hop_limit: 3
   duty_cycle_pct: 10      # EU 869.4-869.65 MHz band
   nodeinfo_interval_s: 3600
-  position_broadcast: false   # true = announce the GPS position (coarsened to precision_bits)
+  position_broadcast: false   # true = announce the site position below (coarsened to precision_bits)
   position_precision_bits: 16
+  # position: {lat: 52.0, lon: 5.0, alt: 10}   # fixed site position; this HAT has no GPS wired
   channels:
     - name: LongFast
       psk: "AQ=="           # default key; put your own base64 key here for a private channel
@@ -62,7 +63,7 @@ mesh:
   reconnect_s: 15
 
 gps:
-  enabled: true
+  enabled: false          # no GPS on the Goldspot HAT; true = read a USB receiver through gpsd
   gpsd_host: 127.0.0.1
   gpsd_port: 2947
   sample_interval_s: 60
@@ -74,4 +75,4 @@ web:
   # dir: /opt/lorarepeater/web   # GUI files; default looks there, then in the repo checkout
 
 hardware:
-  led_enabled: true
+  led_enabled: true       # health on the Pi ACT/PWR LEDs behind the front light pipes

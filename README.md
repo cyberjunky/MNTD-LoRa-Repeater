@@ -2,7 +2,7 @@
 
 Give a retired **MNTD Goldspot / RAK Hotspot Miner V2** Helium hotspot a second life as a
 **LoRaWAN gateway + Meshtastic repeater** with a Python backend, a database of everything it
-hears and relays, GPS-disciplined time, and a web dashboard.
+hears and relays, and a web dashboard.
 
 The box is a Raspberry Pi 4 Model B with a RAKwireless HAT carrying a RAK2287 (Semtech SX1302,
 EU868, GPS). Nothing from the Helium firmware is kept: a stock Raspberry Pi OS card plus one
@@ -19,14 +19,15 @@ install script replaces it.
   node, RSSI/SNR, airtime and the node database are recorded. A second SX1262 radio with
   `meshtasticd` is supported as an alternative.
 - **Telegram bridge**: mesh texts into a chat or channel, `/send` and `/dm` back to the mesh.
-- **GPS**: position, fix quality and satellites in the GUI; the receiver also disciplines
-  `chrony`, so the box is an NTP server for your LAN and the concentrator gets GPS timestamps.
+- **Time sync** via `chrony` in the GUI. The Goldspot HAT does not wire the RAK2287's GNSS to
+  the Pi (no I2C, no UART, no antenna lead), so there is no GPS; a USB receiver through `gpsd`
+  is supported if you add one.
 - **Web GUI** (no internet needed): live packet feeds, per-channel and per-data-rate charts,
   devices and nodes, messages, upstream health, time sync, events. Light/dark.
 - **SQLite** storage with retention, JSON API, WebSocket live feed.
 - **Diagnostics** tab: service states and restarts, per-unit journal viewer, hardware scan,
   concentrator probe, effective config, raw live feed. No root: restarts go through a polkit rule.
-- Front LED shows health. No telemetry, no phone-home.
+- The Pi's ACT/PWR LEDs behind the front light pipes show health. No telemetry, no phone-home.
 
 ## Quick start
 
@@ -46,9 +47,9 @@ Then open `http://<hostname>:8080/` and add your LoRaWAN network servers to
 
 | Path | Content |
 |---|---|
-| `backend/` | Python package `lorarepeater` (FastAPI, asyncio UDP mux, Meshtastic client, gpsd/chrony monitor, I2C GPS bridge) and tests |
+| `backend/` | Python package `lorarepeater` (FastAPI, asyncio UDP mux, Meshtastic engine, chrony/gpsd monitor, diagnostics) and tests |
 | `web/` | The dashboard (static HTML/CSS/JS) |
-| `install/` | `install.sh`, systemd units, sx1302_hal patch, reset script, LP5562 overlay, chrony/gpsd/meshtasticd templates |
+| `install/` | `install.sh`, systemd units, sx1302_hal patch, reset script, polkit and udev rules, meshtasticd templates |
 | `docs/` | [hardware](docs/hardware.md), [firmware analysis](docs/firmware-analysis.md), [architecture](docs/architecture.md), [Meshtastic on the SX1302](docs/meshtastic-on-sx1302.md), [install](docs/install.md), [research](docs/research/) |
 | `tools/` | `extract_initramfs.py` to unpack the stock firmware image |
 | `photos/` | The hardware |
@@ -73,11 +74,11 @@ Without hardware the service still runs: point any Semtech UDP packet forwarder 
 
 ## Status
 
-Built from the firmware analysis and documentation; **not yet run on the real hardware**.
-The HAL patch applies cleanly to V2.1.0 and compiles; the Meshtastic engine is covered by
-tests against a simulated forwarder. The first on-device test should verify: reset pin
-(installer probes 25 then 17), GPS over I2C, the LP5562 overlay, Meshtastic receive and then
-relay on the service channel (bench procedure in
+First hardware bring-up on 2026-10-25: the concentrator answers with reset on GPIO 25
+(EUI 0016C001FF000001), the patched forwarder starts with the Meshtastic service channel,
+and the backend sends NodeInfo beacons. The LP5562 LED driver footprint on this HAT revision is
+unpopulated and the GNSS is not wired to the Pi, so both were removed from the design. Still
+to verify on air: Meshtastic receive and relay (bench procedure in
 [docs/meshtastic-on-sx1302.md](docs/meshtastic-on-sx1302.md)).
 
 ## License

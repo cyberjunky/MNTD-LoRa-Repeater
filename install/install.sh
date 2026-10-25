@@ -7,7 +7,6 @@
 #
 # Idempotent: safe to re-run. Environment overrides:
 #     RESET_PIN=25|17|auto   SX1302 reset GPIO (default auto: probe 25 then 17)
-#     GPS_MODE=i2c|uart|off  how the RAK2287 GPS is reached (default auto-detect)
 #     MESH=sx1302|meshstick|serial|none
 #                            sx1302   = Meshtastic on the RAK2287 service channel (default,
 #                                       patched HAL, one antenna)
@@ -26,7 +25,6 @@ DATA_DIR=/var/lib/lorarepeater
 BOOT_CFG=/boot/firmware/config.txt
 [ -f "$BOOT_CFG" ] || BOOT_CFG=/boot/config.txt
 RESET_PIN="${RESET_PIN:-auto}"
-GPS_MODE="${GPS_MODE:-auto}"
 MESH="${MESH:-sx1302}"
 MESH_ROLE="${MESH_ROLE:-ROUTER_LATE}"
 
@@ -39,41 +37,32 @@ grep -q "Raspberry Pi 4" /proc/device-tree/model 2>/dev/null || warn "this does 
 [ "$(uname -m)" = "aarch64" ] || die "64-bit OS required (uname -m = $(uname -m))"
 
 # ------------------------------------------------------------------------------------------
-log "1/9 apt packages"
+log "1/8 apt packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
 apt-get install -y -q git build-essential python3 python3-venv python3-dev i2c-tools \
-    gpiod chrony gpsd gpsd-clients device-tree-compiler jq curl ca-certificates
+    raspi-utils chrony curl ca-certificates
 
 # ------------------------------------------------------------------------------------------
-log "2/9 boot config ($BOOT_CFG): SPI, I2C, UART, LED overlay"
+log "2/8 boot config ($BOOT_CFG): SPI, I2C, watchdog"
 ensure_line() { grep -qxF "$1" "$BOOT_CFG" || echo "$1" >> "$BOOT_CFG"; }
 cp -n "$BOOT_CFG" "$BOOT_CFG.lorarepeater.bak" || true
 sed -i -E 's/^#?dtparam=spi=.*/dtparam=spi=on/; s/^#?dtparam=i2c_arm=.*/dtparam=i2c_arm=on/' "$BOOT_CFG"
 grep -q '^dtparam=spi=on' "$BOOT_CFG" || echo 'dtparam=spi=on' >> "$BOOT_CFG"
 grep -q '^dtparam=i2c_arm=on' "$BOOT_CFG" || echo 'dtparam=i2c_arm=on' >> "$BOOT_CFG"
-ensure_line "enable_uart=1"
 ensure_line "dtparam=watchdog=on"
-# Front LED: TI LP5562 at 0x30 (custom overlay, there is none in Raspberry Pi OS)
-dtc -@ -I dts -O dtb -o /boot/firmware/overlays/lp5562.dtbo "$REPO_DIR/install/overlays/lp5562.dts" 2>/dev/null \
-    || dtc -@ -I dts -O dtb -o /boot/overlays/lp5562.dtbo "$REPO_DIR/install/overlays/lp5562.dts"
-ensure_line "dtoverlay=lp5562"
-# HAT EEPROM (24C32 at 0x50), read-only informational
-ensure_line "dtoverlay=at24,eeprom=24c32,addr=0x50"
 modprobe i2c-dev 2>/dev/null || true
 grep -qxF i2c-dev /etc/modules || echo i2c-dev >> /etc/modules
 
 # ------------------------------------------------------------------------------------------
-log "3/9 hardware detection"
+log "3/8 hardware detection"
 I2C_DETECT="$(i2cdetect -y 1 2>/dev/null || true)"
 have_i2c() { echo "$I2C_DETECT" | grep -qiE "(^| )$1( |$)"; }
-HAVE_GPS=0; HAVE_ECC=0; HAVE_EEPROM=0; HAVE_LED=0
-have_i2c 42 && HAVE_GPS=1
+HAVE_ECC=0; HAVE_EEPROM=0
 have_i2c 60 && HAVE_ECC=1
 # 0x50 answers directly, or shows as UU once the at24 driver has claimed it
 if have_i2c 50 || [ -e /sys/bus/i2c/devices/1-0050/eeprom ]; then HAVE_EEPROM=1; fi
-(have_i2c 30 || echo "$I2C_DETECT" | grep -q "30: UU") && HAVE_LED=1
-echo "I2C: gps=$HAVE_GPS ecc608=$HAVE_ECC eeprom=$HAVE_EEPROM lp5562=$HAVE_LED"
+echo "I2C: ecc608=$HAVE_ECC eeprom=$HAVE_EEPROM"
 if [ "$RESET_PIN" = "auto" ]; then
     # Stock firmware logic: EEPROM present -> rakspot_v3 -> GPIO 25, otherwise GPIO 17.
     # The chip-id probe in step 5 verifies this and falls back to the other pin.
@@ -82,7 +71,7 @@ fi
 echo "SX1302 reset pin candidate: GPIO $RESET_PIN"
 
 # ------------------------------------------------------------------------------------------
-log "4/9 Semtech sx1302_hal $HAL_TAG (packet forwarder) in $HAL_DIR"
+log "4/8 Semtech sx1302_hal $HAL_TAG (packet forwarder) in $HAL_DIR"
 if [ ! -d "$HAL_DIR/.git" ]; then
     git clone --depth 1 --branch "$HAL_TAG" https://github.com/Lora-net/sx1302_hal.git "$HAL_DIR"
 fi
@@ -93,7 +82,7 @@ install -m 755 "$REPO_DIR/install/bin/reset_lgw.sh" "$HAL_DIR/util_chip_id/reset
 install -m 755 "$REPO_DIR/install/bin/reset_lgw.sh" /usr/local/bin/reset_lgw.sh
 
 # ------------------------------------------------------------------------------------------
-log "5/9 probing the concentrator"
+log "5/8 probing the concentrator"
 probe_pin() {
     # one log per pin so both attempts can be inspected afterwards
     SX1302_RESET_PIN="$1" /usr/local/bin/reset_lgw.sh start >"/tmp/chip_id_gpio$1.log" 2>&1 || return 1
@@ -121,35 +110,12 @@ if [ "$MESH" = sx1302 ]; then
 fi
 
 # ------------------------------------------------------------------------------------------
-log "6/9 GPS: I2C bridge, gpsd, chrony"
-mkdir -p "$CONF_DIR" "$DATA_DIR" /run/lorarepeater
-if [ "$GPS_MODE" = "auto" ]; then
-    if [ "$HAVE_GPS" = 1 ]; then GPS_MODE=i2c
-    elif timeout 4 cat /dev/ttyS0 2>/dev/null | grep -q '^\$G'; then GPS_MODE=uart
-    else GPS_MODE=off; fi
-fi
-echo "GPS mode: $GPS_MODE"
-case "$GPS_MODE" in
-    i2c)  GPS_TTY_PKTFWD=/run/lorarepeater/gps-pktfwd; GPS_TTY_GPSD=/run/lorarepeater/gps-gpsd ;;
-    uart) GPS_TTY_PKTFWD=/dev/ttyS0; GPS_TTY_GPSD=/dev/ttyS0; warn "UART GPS: gpsd and lora_pkt_fwd will share /dev/ttyS0; prefer i2c" ;;
-    *)    GPS_TTY_PKTFWD=""; GPS_TTY_GPSD="" ;;
-esac
-cat > /etc/default/gpsd <<EOF
-# written by lorarepeater install.sh
-START_DAEMON="true"
-USBAUTO="false"
-DEVICES="$GPS_TTY_GPSD"
-GPSD_OPTIONS="-n"
-EOF
-install -m 644 "$REPO_DIR/install/chrony/lorarepeater.conf" /etc/chrony/conf.d/lorarepeater.conf 2>/dev/null \
-    || install -m 644 "$REPO_DIR/install/chrony/lorarepeater.conf" /etc/chrony/chrony.d/lorarepeater.conf 2>/dev/null || true
-
-# ------------------------------------------------------------------------------------------
-log "7/9 packet forwarder configuration"
+log "6/8 packet forwarder configuration"
+mkdir -p "$CONF_DIR" "$DATA_DIR"
 python3 - "$REPO_DIR/reference/original-firmware/etc/lorawan/sx1302/global_conf.json.sx1250.EU868" \
-          "$CONF_DIR/global_conf.json" "$GW_EUI" "$GPS_TTY_PKTFWD" "$MESH" <<'PY'
+          "$CONF_DIR/global_conf.json" "$GW_EUI" "$MESH" <<'PY'
 import json, re, sys
-src, dst, eui, gps_tty, mesh = sys.argv[1:6]
+src, dst, eui, mesh = sys.argv[1:5]
 raw = open(src).read()
 raw = re.sub(r"/\*.*?\*/", "", raw, flags=re.S)
 raw = re.sub(r"//[^\n]*", "", raw)
@@ -172,17 +138,14 @@ if mesh == "sx1302":
                            "implicit_hdr": False, "implicit_payload_length": 17, "implicit_crc_en": False,
                            "implicit_coderate": 1}
 g = c["gateway_conf"]
+# the Goldspot HAT does not wire the RAK2287 GNSS to the Pi
 g.pop("gps_i2c_path", None)
 g["gateway_ID"] = eui
 g["server_address"] = "127.0.0.1"
 g["serv_port_up"] = 1730
 g["serv_port_down"] = 1730
-if gps_tty:
-    g["gps_tty_path"] = gps_tty
-    g["fake_gps"] = False
-else:
-    g["gps_tty_path"] = ""
-    g["fake_gps"] = False
+g["gps_tty_path"] = ""
+g["fake_gps"] = False
 g.setdefault("stat_interval", 30)
 g.setdefault("keepalive_interval", 10)
 json.dump(c, open(dst, "w"), indent=4)
@@ -191,7 +154,7 @@ PY
 ln -sf "$CONF_DIR/global_conf.json" "$HAL_DIR/packet_forwarder/global_conf.json"
 
 # ------------------------------------------------------------------------------------------
-log "8/9 lorarepeater backend in $INSTALL_DIR"
+log "7/8 lorarepeater backend in $INSTALL_DIR"
 id -u lorarepeater >/dev/null 2>&1 || useradd -r -s /usr/sbin/nologin -d "$DATA_DIR" -G i2c,spi,gpio,dialout lorarepeater 2>/dev/null \
     || useradd -r -s /usr/sbin/nologin -d "$DATA_DIR" lorarepeater
 for grp in i2c spi gpio dialout; do getent group "$grp" >/dev/null && usermod -aG "$grp" lorarepeater; done
@@ -206,15 +169,14 @@ chown -R lorarepeater:lorarepeater "$DATA_DIR" "$CONF_DIR"
 install -m 644 "$REPO_DIR/install/systemd/"*.service /etc/systemd/system/
 install -m 644 "$REPO_DIR/install/systemd/lorarepeater.tmpfiles" /etc/tmpfiles.d/lorarepeater.conf
 install -m 644 "$REPO_DIR/install/polkit/10-lorarepeater.rules" /etc/polkit-1/rules.d/10-lorarepeater.rules
+install -m 644 "$REPO_DIR/install/udev/99-lorarepeater-leds.rules" /etc/udev/rules.d/99-lorarepeater-leds.rules
+udevadm control --reload && udevadm trigger --subsystem-match=leds --action=add
 systemd-tmpfiles --create /etc/tmpfiles.d/lorarepeater.conf
 systemctl daemon-reload
-SERVICES="lora-pkt-fwd lorarepeater"
-if [ "$GPS_MODE" = i2c ]; then SERVICES="lorarepeater-gps-bridge $SERVICES"; fi
-systemctl enable $SERVICES chrony gpsd >/dev/null
-if [ "$GPS_MODE" = off ]; then systemctl disable --now gpsd lorarepeater-gps-bridge 2>/dev/null || true; fi
+systemctl enable lora-pkt-fwd lorarepeater chrony >/dev/null
 
 # ------------------------------------------------------------------------------------------
-log "9/9 Meshtastic ($MESH)"
+log "8/8 Meshtastic ($MESH)"
 if [ "$MESH" = sx1302 ]; then
     sed -i 's/^\(\s*\)enabled: false\s*# meshsx/\1enabled: true  # meshsx/; s/^\(\s*\)enabled: true\s*# mesh$/\1enabled: false  # mesh/' "$CONF_DIR/config.yaml"
     echo "Meshtastic runs on the RAK2287 service channel (869.525 MHz, LongFast); node name/role in $CONF_DIR/config.yaml"
@@ -251,7 +213,6 @@ cat <<EOF
 
   Reset pin      : GPIO $RESET_PIN  (/etc/default/lora-pkt-fwd)
   Gateway EUI    : $GW_EUI
-  GPS            : $GPS_MODE
   Forwarder conf : $CONF_DIR/global_conf.json
   Backend conf   : $CONF_DIR/config.yaml   (add your LoRaWAN network servers under gwmp.upstreams)
   Meshtastic     : $MESH
@@ -259,5 +220,5 @@ cat <<EOF
 $([ "$MESH" = sx1302 ] || [ "$MESH" = none ] || echo "  Meshtastic web : https://$(hostname -I 2>/dev/null | awk '{print $1}'):9443/")
 
 Reboot now so the boot overlays take effect:   sudo reboot
-Then check:  systemctl status lora-pkt-fwd lorarepeater gpsd chrony ; chronyc sources ; gpspipe -w -n 5
+Then check:  systemctl status lora-pkt-fwd lorarepeater chrony ; chronyc sources
 EOF

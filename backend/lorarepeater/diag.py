@@ -23,12 +23,12 @@ from fastapi.responses import PlainTextResponse
 
 from .config import Config
 
-UNITS = ["lora-pkt-fwd", "lorarepeater", "lorarepeater-gps-bridge", "gpsd", "chrony", "meshtasticd"]
+UNITS = ["lora-pkt-fwd", "lorarepeater", "chrony", "meshtasticd"]
 RESTARTABLE = list(UNITS)
 LOG_SOURCES = {**{u: ["-u", u] for u in UNITS}, "kernel": ["-k"], "all": []}
 NOISE = ("syncword not found",)  # lora_pkt_fwd debug chatter
 SECRET_KEYS = ("token", "psk", "password", "secret", "key")
-RESET_PINS = (7, 17, 25)
+BUTTON_PIN = 7
 FORWARDER_ENV = Path("/etc/default/lora-pkt-fwd")
 GLOBAL_CONF = Path("/etc/lorarepeater/global_conf.json")
 GLOBAL_CONF_KEYS = ("gateway_ID", "server_address", "serv_port_up", "serv_port_down",
@@ -218,7 +218,7 @@ class Diag:
         out: dict[str, Any] = {}
         _, txt = await run(["i2cdetect", "-y", "1"], 10)
         out["i2cdetect"] = txt.strip()
-        pins = ",".join(str(p) for p in sorted(set(RESET_PINS) | {self.reset_pin()}))
+        pins = f"{BUTTON_PIN},{self.reset_pin()}"
         _, txt = await run(["pinctrl", "get", pins], 5)
         out["gpio"] = txt.strip()
         dev = Path("/dev")

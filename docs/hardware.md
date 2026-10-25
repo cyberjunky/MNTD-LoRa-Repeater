@@ -12,23 +12,23 @@ Tags: **seen** = visible in photos or firmware; **inferred** = deduced, verify o
 | Carrier | RAKwireless Pi HAT, black PCB, `www.RAKwireless.com`, FCF-4 94V-0, mini-PCIe socket, 40-pin female header on the bottom, an unpopulated 2×20 through-hole row on the top edge. On-board 5 V buck converter (`4R7` inductor, 220 µF 6.3 V cap), micro-USB connector, `LED1`, SMA bulkheads for LoRa and GPS. |
 | Concentrator | RAK2287 LoRa Concentrator Module, **EU868**, **GPS variant** (`GPS` u.FL on the module, date code 2129). Semtech SX1302 baseband + 2× SX1250 front ends + u-blox GNSS. |
 | EEPROM | `BL24C32F` 32 kbit I2C EEPROM at 0x50 (`dtoverlay=at24`, driver `at24`). |
-| Secure element | ATECC608 at I2C 0x60 (firmware `hardware_detect`; chip itself not readable in the photos, **inferred** present because the EEPROM board revision ships with it). |
-| LED | TI LP5562 RGB/white LED driver at I2C 0x30 behind the front light pipe. |
-| Enclosure | Gold anodised aluminium extrusion, external LoRa antenna on SMA, GPS antenna on second SMA, label `by RAKwireless`. |
+| Secure element | ATECC608 at I2C 0x60, the UDFN-8 at `U8` (answers on the bus). |
+| LED | **Not fitted.** The LP5562 footprint `U6` and the `LED1`/`D6` pads are unpopulated on this revision; nothing answers at 0x30. The front light pipes sit over the Pi's own PWR and ACT LEDs. |
+| Enclosure | Gold anodised aluminium extrusion, external LoRa antenna on SMA, label `by RAKwireless`. The module's `GPS` u.FL has no cable. |
 
 ## Pi 4 GPIO usage by the HAT (seen in firmware unless noted)
 
 | BCM GPIO | Function | Notes |
 |---|---|---|
-| 2 / 3 | I2C1 SDA/SCL | LP5562 (0x30), GPS (0x42), EEPROM (0x50), ECC608 (0x60) |
+| 2 / 3 | I2C1 SDA/SCL | EEPROM (0x50, blank) and ECC608 (0x60). No 0x30 and no 0x42: the GNSS is not wired to the Pi (also not on the ID pins 0/1, not on 23/24, UART pins float). |
 | 7 | `SOFT_RESET_PAIRING` input, active low | SPI0 CE1 pin. U-Boot reads it to choose the fallback image. On "rakspot" boards it floats and can read as pressed. **Do not use CE1 for a second SPI device without checking this line.** |
 | 8 | SPI0 CE0 | SX1302 chip select, `/dev/spidev0.0` |
 | 9 / 10 / 11 | SPI0 MISO / MOSI / SCLK | SX1302 |
 | 13 | IO expander enable (sidetable boards only) | Harmless on RAK boards |
-| 14 / 15 | UART (`enable_uart=1`) | Console / mini-UART. On Pi 4 with the stock config the PL011 is used for Bluetooth and the GPS is read over I2C, not UART. |
+| 14 / 15 | UART | Not connected to the HAT (both pins follow the Pi's pull resistors). |
 | 17 | SX1302 reset on `rakspot`, `rakspot_v2`, `blackspot` | Not this unit; pulsing it does nothing |
 | 25 | SX1302 reset on `rakspot_v3` (EEPROM present) and sidetable | **Confirmed on this unit** (2026-10-25: chip_id answers only after a pulse on 25; EUI 0016C001FF000001) |
-| 20 / 6 | GPS enable (sidetable only) | Not used on RAK boards |
+| 6 | Externally pulled high by the HAT | Only free header pin the HAT drives; pulsing it low changes nothing observable. |
 
 Everything else on the 40-pin header is free as far as the firmware shows. SPI1
 (GPIO 16–21) and SPI0 CE1 are the candidates for adding a Meshtastic radio; see

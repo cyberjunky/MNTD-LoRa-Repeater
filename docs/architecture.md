@@ -8,7 +8,7 @@ Turn the MNTD Goldspot into a box that
    once (your own ChirpStack, The Things Network, Helium, ...),
 2. is a **Meshtastic repeater** (router node) with its own SX1262 radio,
 3. records everything it hears and relays in a **database**, and
-4. shows it all in a **web GUI**, including GPS position and GPS-disciplined time.
+4. shows it all in a **web GUI**, including time-sync state and diagnostics.
 
 Everything runs on stock Raspberry Pi OS Lite 64-bit; nothing from the Helium firmware is kept
 except hardware facts ([firmware-analysis.md](firmware-analysis.md)).
@@ -26,13 +26,13 @@ backend (`MESH=meshstick`), see [research/meshtastic-options.md](research/meshta
 ## Processes
 
 ```
-                        RAK2287 (SX1302 + 2x SX1250 + u-blox GPS)
-                        |  SPI0 CE0                 I2C1 0x42
-                        v                               |
-   +------------------------------------------+   +------------------+
-   | lora_pkt_fwd (sx1302_hal, patched)       |   | gps-bridge (py)  |
-   | ch0-7 LoRaWAN 0x34 | service ch 0x2B     |<--| I2C -> 2 ptys    |---> gpsd :2947 --> chrony (NTP for LAN)
-   | 869.525 SF11 BW250 = Meshtastic LongFast |   +------------------+
+                        RAK2287 (SX1302 + 2x SX1250; GNSS not wired on this HAT)
+                        |  SPI0 CE0, reset GPIO 25
+                        v
+   +------------------------------------------+
+   | lora_pkt_fwd (sx1302_hal, patched)       |        chrony (NTP client, time-sync state)
+   | ch0-7 LoRaWAN 0x34 | service ch 0x2B     |
+   | 869.525 SF11 BW250 = Meshtastic LongFast |
    +---------------------+--------------------+
                          | Semtech UDP (GWMP) :1730   rxpk up, txpk down
                          v
@@ -42,7 +42,8 @@ backend (`MESH=meshstick`), see [research/meshtastic-options.md](research/meshta
    |              hands 869.525/SF11BW250 frames to the mesh engine, sends txpk    |
    |  meshsx.py : Meshtastic node (decrypt, decode, dedup, relay, ACK, NodeInfo)   |
    |  telegram.py: bot bridge (/send, /dm, texts -> chat)                          |
-   |  gps.py    : gpsd + chronyc        mesh.py : meshtasticd client (alternative) |
+   |  gps.py    : chronyc (+ gpsd opt.) mesh.py : meshtasticd client (alternative) |
+   |  diag.py   : services, journal, hardware scan, concentrator probe, actions     |
    |  db.py     : SQLite (WAL)          api.py  : FastAPI + WebSocket + static GUI |
    +------+------------------------------+-----------------------+----------------+
           | UDP                          | HTTP :8080            | HTTPS
@@ -84,16 +85,15 @@ backend (`MESH=meshstick`), see [research/meshtastic-options.md](research/meshta
   with the official `meshtastic` package and mirrors packets and nodes into the same tables.
   The Telegram bridge works with this backend too. The Meshtastic web client is on port 9443.
 
-### GPS and time
+### Time (and the GPS that is not there)
 
-- The stock firmware read the RAK2287's u-blox over I2C (0x42) and used its PPS, so the
-  concentrator's hardware PPS input is already wired. `ubx_i2c.py` polls the u-blox DDC
-  registers and replays the stream into two pseudo-terminals, one for `lora_pkt_fwd`
-  (which wants `gps_tty_path` and enables UBX NAV-TIMEGPS itself) and one for `gpsd`.
-- `chrony` uses gpsd's shared-memory refclock as its reference and serves NTP to the LAN.
-  Without a kernel PPS line expect tens of milliseconds accuracy, which is fine for a LAN.
-- `gps.py` shows fix, satellites, accuracy, the chrony offset and sources in the GUI and
-  samples them once a minute.
+- The stock forwarder config named an I2C GPS, but on this HAT revision the RAK2287's GNSS
+  is not connected to the Pi at all: nothing at 0x42 on any bus, the UART pins float, and the
+  module's GPS u.FL has no cable (verified 2026-10-25). The forwarder runs without GPS
+  timestamps, which only matters for Class B beacons.
+- `chrony` keeps time from NTP; `gps.py` shows its tracking state and sources in the GUI.
+  If a USB receiver is added, `gps.enabled: true` makes `gps.py` read gpsd as well, and the
+  Meshtastic node then announces the live fix instead of the configured site position.
 
 ### Storage
 
@@ -105,17 +105,21 @@ produces a few MB per day.
 ### Web GUI
 
 Single page, no build step, no external dependencies (works without internet). Tabs: Overview,
-LoRaWAN, Meshtastic, GPS & time, Events. Live updates over the WebSocket feed. Light and dark
-theme; charts drawn as inline SVG with hover tooltips and a validated colour palette.
+LoRaWAN, Meshtastic, GPS & time, Events, Diagnostics. Live updates over the WebSocket feed. Light
+and dark theme; charts drawn as inline SVG with hover tooltips and a validated colour palette.
+Diagnostics shows service states with restart buttons (polkit rule, no root), the journal per
+unit, an I2C/GPIO/device scan, a `chip_id` probe and the masked effective configuration.
 
-### LED
+### LEDs
 
-Front LED (LP5562) via our overlay: blue while starting, green when forwarder, upstreams and
-mesh node are all fine, orange when something is degraded, red when the forwarder is silent.
+The HAT's LP5562 footprint is unpopulated, so the front light pipes carry the Pi's own ACT
+(green) and PWR (red) LEDs. `led.py` drives them: green when forwarder, upstreams and mesh
+node are fine, both when something is degraded, red when the forwarder is silent, and hands
+them back to the kernel triggers on shutdown. A udev rule makes them writable for the gpio group.
 
 ## Security notes
 
 - Nothing phones home.
 - The GUI has no authentication; keep port 8080 on your LAN or put it behind a reverse proxy.
-- `lorarepeater` runs as its own user; only the GPS bridge and the forwarder run as root
-  (device access).
+- `lorarepeater` runs as its own user; only the forwarder runs as root (device access).
+  Service restarts from the GUI go through a polkit rule limited to the gateway units.

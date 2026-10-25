@@ -419,7 +419,7 @@
   async function refreshDiag() {
     if (!DIAG.srcReady) {
       const sel = $("#diag-log-src");
-      for (const s of ["lora-pkt-fwd", "lorarepeater", "lorarepeater-gps-bridge", "gpsd", "chrony", "meshtasticd", "kernel", "all"]) sel.append(el("option", { value: s }, s));
+      for (const s of ["lora-pkt-fwd", "lorarepeater", "chrony", "meshtasticd", "kernel", "all"]) sel.append(el("option", { value: s }, s));
       DIAG.srcReady = true;
     }
     await Promise.all([refreshDiagSystem(), refreshDiagServices(), refreshDiagLog(), refreshDiagHardware(), refreshDiagConfig()].map((p) => p.catch(console.error)));

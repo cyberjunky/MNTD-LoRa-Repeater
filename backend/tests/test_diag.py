@@ -118,8 +118,8 @@ async def test_diag_endpoints(client, fake_run):
     assert (await client.post("/api/diag/action/restart:sshd")).status_code == 404
     assert (await client.post("/api/diag/action/nope")).status_code == 404
 
-    r = (await client.post("/api/diag/action/restart:gpsd")).json()
-    assert r["ok"] and ["systemctl", "restart", "gpsd.service"] in fake_run
+    r = (await client.post("/api/diag/action/restart:chrony")).json()
+    assert r["ok"] and ["systemctl", "restart", "chrony.service"] in fake_run
 
     r = (await client.post("/api/diag/action/probe-concentrator")).json()
     assert r["ok"] and r["eui"] == "0016C001FF000001" and r["reset_pin"] == 25

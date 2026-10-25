@@ -33,25 +33,23 @@ sudo reboot
 
 The script (idempotent, re-run any time):
 
-1. installs packages (build tools, gpsd, chrony, gpiod, i2c-tools),
-2. enables SPI/I2C/UART in `config.txt`, compiles and enables the LP5562 LED overlay and the
-   `at24` EEPROM overlay,
-3. probes I2C bus 1 (GPS 0x42, ECC608 0x60, EEPROM 0x50, LED 0x30),
-4. builds Semtech `sx1302_hal` V2.1.0 into `/opt/sx1302_hal` with the temperature-sensor patch
-   and installs the reset script,
+1. installs packages (build tools, chrony, raspi-utils, i2c-tools),
+2. enables SPI, I2C and the watchdog in `config.txt`,
+3. probes I2C bus 1 (ECC608 0x60, EEPROM 0x50; the EEPROM marks the board revision),
+4. builds Semtech `sx1302_hal` V2.1.0 into `/opt/sx1302_hal` with the HAL patch and installs
+   the reset script,
 5. resets the SX1302 on GPIO 25 (or 17) and reads its EUI with `chip_id`, falling back to the
    other pin automatically,
-6. sets up the GPS I2C bridge, `gpsd` and `chrony`,
-7. writes `/etc/lorarepeater/global_conf.json` from the original EU868 profile,
-8. installs the Python backend into `/opt/lorarepeater/venv` and the systemd units,
-9. optionally installs `meshtasticd` and configures the radio and role.
+6. writes `/etc/lorarepeater/global_conf.json` from the original EU868 profile,
+7. installs the Python backend into `/opt/lorarepeater/venv`, the systemd units and the
+   polkit/udev rules,
+8. optionally installs `meshtasticd` and configures the radio and role.
 
 Environment variables for the script:
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `RESET_PIN` | `auto` | `25`, `17` or `auto` (EEPROM present → 25, then verified) |
-| `GPS_MODE` | `auto` | `i2c`, `uart`, `off` |
 | `MESH` | `sx1302` | `sx1302` (Meshtastic on the RAK2287 service channel, one antenna), `meshstick` (USB SX1262 driven by meshtasticd), `serial` (standalone USB node, backend reads the serial port), `none` |
 | `MESH_ROLE` | `ROUTER_LATE` | Meshtastic device role |
 | `HAL_TAG` | `V2.1.0` | sx1302_hal git tag |
@@ -89,10 +87,9 @@ bridge (`chirpstack-gateway-bridge` in Semtech UDP mode) in front of the server.
 ## 4. Check
 
 ```sh
-systemctl status lorarepeater-gps-bridge lora-pkt-fwd gpsd chrony lorarepeater meshtasticd
-journalctl -u lora-pkt-fwd -f        # "concentrator started", GPS sync, rxpk lines
-gpspipe -w -n 5                      # gpsd JSON (TPV with mode 3 = 3D fix)
-chronyc sources                      # "#* GPS" once chrony selected the GPS
+systemctl status lora-pkt-fwd chrony lorarepeater meshtasticd
+journalctl -u lora-pkt-fwd -f        # "concentrator started", rxpk lines
+chronyc sources                      # NTP sources (no GPS on this hardware)
 curl -s localhost:8080/api/status | jq
 ```
 
@@ -108,10 +105,11 @@ probe (chip_id) and the effective configuration. Meshtastic web client (meshtast
   cold start.
 - **Forwarder exits with "failed to configure temperature sensor"**: the HAL patch did not
   apply; run `python3 install/patch_sx1302_hal.py /opt/sx1302_hal && make -C /opt/sx1302_hal`.
-- **No GPS**: `sudo /opt/lorarepeater/venv/bin/lorarepeater gps-bridge --probe` prints what the
-  receiver sends. No bytes at all means the receiver is not on I2C; try `GPS_MODE=uart`.
-  A fix needs the GPS antenna with sky view; first fix can take 15 minutes cold.
+- **GPS**: there is none. The HAT does not connect the RAK2287's GNSS (I2C, UART and the
+  antenna u.FL are all unconnected). For a USB receiver, install `gpsd`, point it at the
+  device and set `gps.enabled: true` in `config.yaml`.
 - **Meshtastic not connected**: `journalctl -u meshtasticd -f`; for a MeshStick check `lsusb`
   shows `1a86:5512`.
-- **LED stays off**: `ls /sys/class/leds` should list `R G B W`; if not, the overlay did not
-  load (`dmesg | grep lp5562`).
+- **Front light**: the Pi's ACT (green) and PWR (red) LEDs, driven by the backend. Green =
+  healthy, both = degraded, red = forwarder silent. If they keep their stock behaviour, check
+  that `/sys/class/leds/ACT/brightness` is group `gpio` writable (udev rule).

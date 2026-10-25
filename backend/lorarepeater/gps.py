@@ -55,14 +55,14 @@ class GpsMonitor:
     async def start(self) -> None:
         await self.db.conn.executescript(GPS_FIX_SCHEMA)
         await self.db.conn.commit()
-        if not self.cfg.enabled:
-            log.info("gps monitor disabled")
-            return
-        self._tasks = [
-            asyncio.create_task(self._gpsd_loop(), name="gpsd"),
-            asyncio.create_task(self._chrony_loop(), name="chrony"),
-            asyncio.create_task(self._sample_loop(), name="gps-sample"),
-        ]
+        self._tasks = [asyncio.create_task(self._chrony_loop(), name="chrony")]
+        if self.cfg.enabled:
+            self._tasks += [
+                asyncio.create_task(self._gpsd_loop(), name="gpsd"),
+                asyncio.create_task(self._sample_loop(), name="gps-sample"),
+            ]
+        else:
+            log.info("gpsd client disabled; time sync from chrony only")
 
     async def stop(self) -> None:
         for t in self._tasks:

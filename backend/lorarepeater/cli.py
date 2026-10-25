@@ -30,7 +30,7 @@ async def _serve(cfg: Config) -> None:
     meshsx = MeshSxEngine(cfg.meshsx, db, mux, gps) if cfg.meshsx.enabled else None
     telegram = TelegramBridge(cfg.telegram, db, meshsx=meshsx, mesh=mesh if cfg.mesh.enabled else None)
     if cfg.hardware.led_enabled:
-        led.set_colour("blue")
+        led.set_state("orange")
     await mux.start()
     await mesh.start()
     await gps.start()
@@ -48,7 +48,7 @@ async def _serve(cfg: Config) -> None:
                 fwd_ok = st["forwarder_seen_s_ago"] is not None and st["forwarder_seen_s_ago"] < 120
                 up_ok = not st["upstreams"] or any(u["alive"] for u in st["upstreams"])
                 mesh_ok = mesh.connected if cfg.mesh.enabled else True
-                led.set_colour(led.health_colour(fwd_ok, up_ok, mesh_ok, cfg.mesh.enabled))
+                led.set_state(led.health_state(fwd_ok, up_ok, mesh_ok))
             if asyncio.get_running_loop().time() - last_prune > 6 * 3600:
                 await db.prune(cfg.retention_days)
                 last_prune = asyncio.get_running_loop().time()
@@ -74,7 +74,7 @@ async def _serve(cfg: Config) -> None:
         await mesh.stop()
         await mux.stop()
         if cfg.hardware.led_enabled:
-            led.set_colour("off")
+            led.set_state("off")
         await db.add_event("system", "info", "lorarepeater stopped")
         await db.close()
 
@@ -88,14 +88,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--debug", action="store_true")
     c = sub.add_parser("check-config", help="load and print the effective configuration")
     c.add_argument("--config", "-c", default=None)
-    g = sub.add_parser("gps-bridge", help="bridge the u-blox GPS on I2C to pseudo-terminals (see ubx_i2c.py)",
-                       add_help=False)
-    g.add_argument("rest", nargs=argparse.REMAINDER)
     args = p.parse_args(argv)
-
-    if args.cmd == "gps-bridge":
-        from .ubx_i2c import main as bridge_main
-        return bridge_main(args.rest)
 
     logging.basicConfig(
         level=logging.DEBUG if getattr(args, "debug", False) else logging.INFO,
