@@ -147,7 +147,7 @@
     hit.addEventListener("mouseleave", () => { hideTip(); cross.setAttribute("visibility", "hidden"); });
     f.svg.append(hit);
     const ax = svgEl("g", { class: "axis" });
-    [0, data.length - 1].forEach((i) => { const t = svgEl("text", { x: sx(i), y: f.H - 6, "text-anchor": i ? "end" : "start" }); t.textContent = fmtTime(data[i].t); ax.append(t); });
+    [0, data.length - 1].forEach((i) => { const t = svgEl("text", { x: sx(i), y: f.H - 6, "text-anchor": i ? "end" : "start" }); t.textContent = data[data.length - 1].t - data[0].t > 2 * 86400 ? new Date(data[i].t * 1000).toLocaleDateString() : fmtTime(data[i].t); ax.append(t); });
     f.svg.append(ax);
     legend(container, names, col);
   }
