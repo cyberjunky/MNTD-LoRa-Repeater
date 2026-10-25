@@ -33,7 +33,9 @@ timestamp = true
 # Whether the poc is enabled or not. When a gateway is not on chain (i.e.
 # dataonly) set this to true to avoid unneeded RF traffic. Defaults to false. 
 #
-# disable = false
+# Helium's PoC ingest (mainnet-pociot:9080) and entropy (:7080) services refuse connections
+# (checked 2026-10-25): beaconing cannot work, so it is off. The hotspot carries data only.
+disable = true
 
 # The uri to fetch entropy for poc beacons
 entropy_uri = "http://entropy.iot.mainnet.helium.io:7080"

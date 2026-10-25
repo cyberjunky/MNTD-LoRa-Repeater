@@ -448,7 +448,8 @@
   // ---------------------------------------------------------------- helium
   const solscan = (kind, id) => `<a class="mono" href="https://solscan.io/${kind}/${id}" target="_blank" rel="noopener">${esc(id.slice(0, 6))}…${esc(id.slice(-4))}</a>`;
   const fmtAmt = (v, d = 2) => v == null ? "–" : Number(v).toLocaleString(undefined, { maximumFractionDigits: d });
-  const kvRows = (node, rows) => table(node, [{ h: "", f: (r) => `<span class="muted">${esc(r[0])}</span>` }, { h: "", f: (r) => r[1] ?? "–" }], rows.filter((r) => r[1] !== undefined));
+  // values may hold markup; callers escape text parts
+  const kvRows = (node, rows) => table(node, [{ h: "", f: (r) => `<span class="muted">${esc(r[0])}</span>` }, { h: "", f: (r) => `<span>${r[1] ?? "–"}</span>` }], rows.filter((r) => r[1] !== undefined));
   async function refreshHelium() {
     const [s, ups] = await Promise.all([api("/api/helium"), api("/api/lorawan/upstreams")]);
     const tiles = $("#he-tiles"), note = $("#he-note"); tiles.innerHTML = "";
@@ -463,7 +464,7 @@
     tiles.append(
       tile("Hotspot", h.name || gw.name || "?", gw.key || "", gw.key ? "good" : "critical"),
       tile("Packet router", gw.router?.connected ? "connected" : "offline", `${gw.region || "?"} · gateway-rs ${gw.fw || "?"}`, gw.router?.connected ? "good" : "critical"),
-      tile("On-chain status", h.active ? "active" : "inactive", `${(h.networks || []).join(", ").toUpperCase() || "–"} · onboarded ${h.onboarded ? new Date(h.onboarded).toLocaleDateString() : "?"}`, h.active ? "good" : "warning"),
+      tile("On-chain status", h.active ? "active" : "inactive", `${(h.networks || []).join(", ").toUpperCase() || "–"} · onboarded ${h.onboarded ? new Date(h.onboarded).toLocaleDateString() : "?"}${h.active ? "" : " · data only, Helium PoC is offline"}`, h.active ? "good" : "warning"),
       tile("Asserted location", h.city || "–", `${h.gain_dbi != null ? h.gain_dbi + " dBi" : ""}${h.elevation_m != null ? ` · ${h.elevation_m} m` : ""}`),
       tile("HNT earned", fmtAmt(t.HNT?.lifetime, 4), eur && t.HNT ? `≈ € ${fmtAmt(t.HNT.lifetime * eur)} at € ${fmtAmt(eur, 3)}/HNT` : "lifetime"),
       tile("IOT earned", fmtAmt(t.IOT?.lifetime, 0), "lifetime, before HIP-138"),
