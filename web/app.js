@@ -340,7 +340,16 @@
   }
   $("#diag-services").onclick = (e) => { const a = e.target.dataset.action; if (a) runAction(a, e.target); };
   $("#diag-probe").onclick = (e) => runAction("probe-concentrator", e.target);
-  async function refreshDiagServices() { table($("#diag-services"), SERVICE_COLS, await api("/api/diag/services"), { empty: "systemctl not available" }); }
+  async function refreshDiagServices() {
+    const rows = await api("/api/diag/services"), sx = status?.meshsx;
+    // the default Meshtastic node is not a unit: it runs inside lorarepeater on the SX1302 service channel
+    if (sx) rows.splice(2, 0, {
+      unit: "meshtastic (built-in)", description: `${sx.node_id} · ${sx.role} · ${sx.freq_mhz} MHz ${sx.datr} · rx ${sx.counters.rx} · relayed ${sx.counters.relayed} · tx ${sx.counters.tx}${sx.last_rx_s_ago != null ? ` · last rx ${sx.last_rx_s_ago}s ago` : " · nothing heard yet"}`,
+      active: sx.enabled ? "active" : "inactive", sub: sx.tx_enabled ? "rx+tx" : "rx only", enabled: "in lorarepeater",
+      restarts: null, since: sx.last_tx_s_ago != null ? `last tx ${sx.last_tx_s_ago}s ago` : null, restartable: false,
+    });
+    table($("#diag-services"), SERVICE_COLS, rows, { empty: "systemctl not available" });
+  }
   async function refreshDiagSystem() {
     const s = await api("/api/diag/system"), t = $("#diag-tiles"); t.innerHTML = "";
     const thr = s.throttled;
