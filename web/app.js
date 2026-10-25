@@ -568,8 +568,8 @@
   // ---------------------------------------------------------------- orchestration
   const refreshTab = (name) => ({ overview: refreshOverview, lorawan: refreshLorawan, mesh: refreshMesh, upstreams: refreshUpstreams, events: refreshEvents, diag: refreshDiag }[name]().catch(console.error));
   async function refreshAll() { try { await refreshStatus(); await refreshTab(tab); } catch (e) { console.error(e); } }
-  showTab(tab);
-  refreshStatus().catch(console.error);
+  // tabs read the status (gateway EUI, node, channels): load it before the first tab renders
+  refreshStatus().catch(console.error).finally(() => showTab(tab));
   connectWs();
   setInterval(() => refreshStatus().catch(console.error), 15000);
   setInterval(() => refreshTab(tab), 60000);
