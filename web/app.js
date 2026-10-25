@@ -485,7 +485,8 @@
       tile("Memory free", fmtBytes(s.mem_available), `of ${fmtBytes(s.mem_total)}`, s.mem_total && s.mem_available / s.mem_total < 0.1 ? "warning" : "good"),
       tile("Disk free", fmtBytes(s.disk?.free), `of ${fmtBytes(s.disk?.total)}`, s.disk && s.disk.free / s.disk.total < 0.1 ? "warning" : "good"),
       tile("Power supply", s.undervoltage == null ? "–" : s.undervoltage ? "under-voltage" : "ok", s.undervoltage == null ? "rpi_volt sensor not found" : s.undervoltage ? "supply voltage too low right now" : "no under-voltage", s.undervoltage == null ? "unknown" : s.undervoltage ? "critical" : "good"),
-      tile("Forwarder", s.forwarder_env?.SX1302_RESET_PIN ? `GPIO ${s.forwarder_env.SX1302_RESET_PIN}` : "–", `${s.global_conf?.gateway_ID ? "EUI " + s.global_conf.gateway_ID : "no global_conf"} · HAL ${s.hal_version || "?"} · syncword ${s.forwarder_env?.LGW_SERVICE_SYNCWORD || "default"}`),
+      (() => { const g = status?.gwmp || {}, ok = g.forwarder_seen_s_ago != null && g.forwarder_seen_s_ago < 120;
+        return tile("Forwarder", ok ? "delivering" : "silent", `last packet ${g.forwarder_seen_s_ago ?? "–"}s ago · ${g.counters?.rxpk ?? 0} received · HAL ${s.hal_version || "?"}`, ok ? "good" : "critical"); })(),
     );
   }
   async function refreshDiagLog() {
