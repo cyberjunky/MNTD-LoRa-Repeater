@@ -45,7 +45,11 @@ sudo reboot
 ```
 
 Then open `http://<hostname>:8080/` and add your LoRaWAN network servers to
-`/etc/lorarepeater/config.yaml`. Full guide: [docs/install.md](docs/install.md).
+`/etc/lorarepeater/config.yaml`. Each network only accepts registered gateways: register the
+gateway EUI shown on the **Upstreams** tab, for TTN in the Europe 1 console with frequency plan
+*Europe 863-870 MHz (SF9 for RX2 - recommended)*
+([step by step](docs/install.md#registering-with-the-things-network)).
+Full guide: [docs/install.md](docs/install.md).
 
 ## Repository layout
 

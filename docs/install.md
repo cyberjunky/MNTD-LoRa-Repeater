@@ -75,9 +75,32 @@ gwmp:
       rx_only: false
 ```
 
-Register the gateway EUI printed by the installer (also in the GUI) at each network. TTN wants
-the "Semtech UDP packet forwarder" gateway type; ChirpStack v4 needs its UDP packet-forwarder
-bridge (`chirpstack-gateway-bridge` in Semtech UDP mode) in front of the server.
+Each network only accepts traffic from gateways registered to an account. Until then the
+**Upstreams** tab shows "no answer" and Acked stays 0, which is expected. The gateway EUI is in
+the installer summary and on the Upstreams tab.
+
+### Registering with The Things Network
+
+1. Open the [TTN console, Europe 1](https://eu1.cloud.thethings.network/console) (the link is
+   also on the Upstreams tab) and log in.
+2. **Gateways** → **Register gateway**.
+3. **Gateway EUI**: the EUI from the Upstreams tab. If the console offers to *claim* the
+   gateway, choose to register it instead.
+4. **Gateway ID** (lowercase, e.g. `mntd-goldspot`) and a name of your choice.
+5. **Frequency plan**: *Europe 863-870 MHz (SF9 for RX2 - recommended)*.
+6. Leave *Require authenticated connection* off: the box uses the Semtech UDP protocol.
+7. **Register gateway**.
+
+Within a minute the console shows the gateway as connected and the Upstreams tile turns green.
+Uplinks from TTN devices in range then reach TTN through this box, and TTN downlinks are
+transmitted by it. The upstream hostname is re-resolved every five minutes, so TTN's rotating
+addresses are followed automatically.
+
+### Other networks
+
+ChirpStack v4 needs its UDP packet-forwarder bridge (`chirpstack-gateway-bridge` in Semtech UDP
+mode) in front of the server; register the same EUI there. Set `rx_only: true` on an upstream
+to share uplinks with it without ever transmitting its downlinks.
 
 ## 4. Check
 
