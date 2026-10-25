@@ -169,6 +169,14 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync, heli
     async def helium_view() -> dict[str, Any]:
         return helium.status()
 
+    @app.get("/api/helium/nearby")
+    async def helium_nearby() -> dict[str, Any]:
+        return await helium.nearby()
+
+    @app.get("/api/helium/hotspot/{key}")
+    async def helium_hotspot(key: str) -> dict[str, Any]:
+        return await helium.hotspot(key)
+
     @app.get("/api/lorawan/stats")
     async def gateway_stats(limit: int = Query(200, le=5000)) -> list[dict[str, Any]]:
         return await db.fetch("SELECT * FROM gateway_stats ORDER BY id DESC LIMIT ?", (limit,))

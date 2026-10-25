@@ -145,3 +145,5 @@ button:disabled { opacity: .5; cursor: wait; }
 .links { margin: 0; padding-left: 18px; line-height: 1.9; }
 .tbl.compact td { white-space: nowrap; }
 .card:has(> .tbl.compact) { overflow-x: auto; }   /* a wide compact table scrolls inside its card */
+.map { height: 460px; border-radius: 6px; border: 1px solid var(--line); }
+.leaflet-popup-content { font: 13px/1.45 system-ui, sans-serif; }

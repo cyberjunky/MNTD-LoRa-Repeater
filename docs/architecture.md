@@ -118,6 +118,7 @@ configured: everything is discovered from the hotspot key.
 | 5 | Solana RPC `getSignaturesForAddress` + `getTransaction` | the recipient accounts | claim history: for each claim the wallet whose token balance went up, and by how much (transactions are cached in memory) |
 | 6 | Solana RPC `getBalance`, `getTokenAccountsByOwner` | the wallet that received the claims | SOL, HNT and IOT balances of the owner wallet |
 | 7 | CoinGecko | `simple/price?ids=helium&vs_currencies=eur,usd` | HNT price for value estimates |
+| 8 | Helium entity service, weekly | `GET https://entities.nft.helium.io/v2/hotspots?subnetwork=iot[&cursor=…]`, about 104 pages of 10,000 | every IOT hotspot's key, location and `is_active`; kept: those within 30 km (`helium_nearby` table) plus network-wide totals, drawn on the map (OpenStreetMap tiles via Leaflet); a marker's name and details come from step 2 for that key when clicked |
 
 Derived values: unclaimed = lifetime (oracle) − claimed (recipient account); value = amount ×
 HNT price. IOT rewards ended with HIP-138 (HNT is the only reward token since), so IOT shows

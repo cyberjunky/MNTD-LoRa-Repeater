@@ -7,7 +7,9 @@ Sources, all public and read-only:
 * Helium reward oracles: lifetime rewards per token (HNT now, IOT before HIP-138);
 * Solana mainnet RPC: the lazy-distributor recipient accounts (rewards claimed so far), the
   claim transactions (history and the wallet that receives them) and that wallet's balances;
-* CoinGecko: the HNT price, for a value estimate.
+* CoinGecko: the HNT price, for a value estimate;
+* the entity service's full IOT hotspot list (about a million entries, 10,000 per page): scanned
+  weekly for hotspots within NEARBY_KM of ours, which the map shows (names on demand).
 
 The snapshot is rebuilt every REFRESH_S and served by /api/helium. Claim transactions never
 change, so each is fetched once and kept in the helium_claims table (the public RPC is rate
@@ -20,6 +22,7 @@ import asyncio
 import base64
 import json
 import logging
+import math
 import struct
 import time
 from typing import Any
@@ -32,6 +35,9 @@ from .db import Database
 log = logging.getLogger(__name__)
 
 REFRESH_S = 900
+NEARBY_KM = 30
+NEARBY_RESCAN_S = 7 * 86400
+HOTSPOT_LIST = "https://entities.nft.helium.io/v2/hotspots"
 ENTITY_API = "https://entities.nft.helium.io/{key}"
 ORACLES = {"HNT": "https://hnt-rewards.oracle.helium.io/?assetId={asset}",
            "IOT": "https://iot-rewards.oracle.helium.io/?assetId={asset}"}
@@ -86,20 +92,34 @@ class Helium:
         self.transport = transport          # tests inject a mock transport
         self.state: dict[str, Any] = {"enabled": cfg.enabled}
         self._claims: dict[str, dict[str, Any]] = {}    # signature -> claim, mirrored in helium_claims
-        self._task: asyncio.Task | None = None
+        self._tasks: list[asyncio.Task] = []
+        self._entities: dict[str, dict[str, Any]] = {}   # key -> entity details (map popups)
 
     async def start(self) -> None:
         for row in await self.db.fetch("SELECT * FROM helium_claims"):
             self._claims[row["signature"]] = row if row["wallet"] else {}
         if self.cfg.enabled:
-            self._task = asyncio.create_task(self._loop(), name="helium")
+            self._tasks = [asyncio.create_task(self._loop(), name="helium"),
+                           asyncio.create_task(self._nearby_loop(), name="helium-nearby")]
 
     async def stop(self) -> None:
-        if self._task:
-            self._task.cancel()
+        for t in self._tasks:
+            t.cancel()
 
     def status(self) -> dict[str, Any]:
         return self.state
+
+    async def nearby(self) -> dict[str, Any]:
+        scan = await self.db.fetchone("SELECT * FROM helium_scan WHERE id = 1")
+        rows = await self.db.fetch("SELECT * FROM helium_nearby ORDER BY distance_km")
+        return {"scan": scan, "hotspots": rows}
+
+    async def hotspot(self, key: str) -> dict[str, Any]:
+        """Entity details for one hotspot (map popup), cached."""
+        if key not in self._entities:
+            async with httpx.AsyncClient(timeout=20, transport=self.transport) as http:
+                self._entities[key] = await self._entity(http, key)
+        return self._entities[key]
 
     def summary(self) -> dict[str, Any]:
         """Compact view for /api/status (the Overview tile)."""
@@ -118,6 +138,44 @@ class Helium:
                 log.warning("helium refresh failed: %s", e)
                 self.state["error"] = str(e)[:200]
             await asyncio.sleep(REFRESH_S)
+
+    async def _nearby_loop(self) -> None:
+        while True:
+            await asyncio.sleep(60)
+            here = self.state.get("hotspot") or {}
+            scan = await self.db.fetchone("SELECT ts FROM helium_scan WHERE id = 1")
+            if here.get("lat") is None or (scan and time.time() - scan["ts"] < NEARBY_RESCAN_S):
+                continue
+            try:
+                await self.scan_nearby(here["lat"], here["lon"])
+            except (httpx.HTTPError, KeyError, ValueError) as e:
+                log.warning("nearby hotspot scan failed: %s", e)
+
+    async def scan_nearby(self, lat: float, lon: float) -> None:
+        total = active = 0
+        rows: list[dict[str, Any]] = []
+        cursor = None
+        async with httpx.AsyncClient(timeout=60, transport=self.transport) as http:
+            while True:
+                params = {"subnetwork": "iot", **({"cursor": cursor} if cursor else {})}
+                r = await http.get(HOTSPOT_LIST, params=params)
+                r.raise_for_status()
+                page = r.json()
+                for h in page.get("items", []):
+                    total += 1
+                    active += bool(h.get("is_active"))
+                    if h.get("lat") is None:
+                        continue
+                    d = distance_km(lat, lon, h["lat"], h["long"])
+                    if 0 < d <= NEARBY_KM:
+                        rows.append({"key": h["entity_key_str"], "lat": h["lat"], "lon": h["long"],
+                                     "active": int(bool(h.get("is_active"))), "distance_km": round(d, 2)})
+                cursor = page.get("cursor")
+                if not cursor or not page.get("items"):
+                    break
+        await self.db.replace_helium_nearby(rows, {"ts": time.time(), "total": total, "active": active,
+                                                    "nearby": len(rows), "radius_km": NEARBY_KM})
+        log.info("helium hotspot scan: %d hotspots, %d active, %d within %d km", total, active, len(rows), NEARBY_KM)
 
     async def refresh(self) -> None:
         state: dict[str, Any] = {"enabled": True, "updated": time.time(), "errors": {}}
@@ -228,6 +286,13 @@ class Helium:
         r = await http.get(PRICE_API)
         r.raise_for_status()
         return {"HNT": r.json()["helium"]}
+
+
+def distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance (haversine)."""
+    p = math.pi / 180
+    h = math.sin((lat2 - lat1) * p / 2) ** 2 + math.cos(lat1 * p) * math.cos(lat2 * p) * math.sin((lon2 - lon1) * p / 2) ** 2
+    return 12742 * math.asin(math.sqrt(h))
 
 
 def _num(v: Any) -> float | None:

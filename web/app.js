@@ -452,6 +452,47 @@
   const fmtAmt = (v, d = 2) => v == null ? "–" : Number(v).toLocaleString(undefined, { maximumFractionDigits: d });
   // values may hold markup; callers escape text parts
   const kvRows = (node, rows) => table(node, [{ h: "", f: (r) => `<span class="muted">${esc(r[0])}</span>` }, { h: "", f: (r) => `<span>${r[1] ?? "–"}</span>` }], rows.filter((r) => r[1] !== undefined));
+  // ---------------------------------------------------------------- helium map (Leaflet + OpenStreetMap, loaded on first use)
+  const LEAFLET = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/";
+  let leafletReady = null, heMap = null, heLayer = null;
+  const loadLeaflet = () => leafletReady ||= new Promise((resolve, reject) => {
+    document.head.append(el("link", { rel: "stylesheet", href: LEAFLET + "leaflet.min.css" }));
+    const sc = el("script", { src: LEAFLET + "leaflet.min.js" }); sc.onload = resolve; sc.onerror = () => { leafletReady = null; reject(new Error("map library not reachable")); };
+    document.head.append(sc);
+  });
+  async function refreshHeliumMap(h) {
+    const box = $("#he-map"), info = $("#he-map-info");
+    if (h.lat == null) { info.textContent = "the hotspot has no asserted location"; return; }
+    const near = await api("/api/helium/nearby"), sc = near.scan, list = near.hotspots || [];
+    const act = list.filter((x) => x.active), nearestActive = act[0];
+    info.textContent = sc
+      ? `${list.length} hotspots within ${sc.radius_km} km · ${act.length} active${nearestActive ? ` · nearest active ${n1(nearestActive.distance_km, 1)} km` : ""} · network-wide ${sc.active.toLocaleString()} of ${sc.total.toLocaleString()} active · scanned ${ago(sc.ts)}`
+      : "scanning the Helium hotspot list (about a million entries) for neighbours; this takes a few minutes after start";
+    try { await loadLeaflet(); } catch (e) { box.textContent = e.message; return; }
+    const L = window.L;
+    if (!heMap) {
+      heMap = L.map(box, { scrollWheelZoom: false }).setView([h.lat, h.lon], 11);
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "© OpenStreetMap contributors" }).addTo(heMap);
+    }
+    heLayer?.remove();
+    heLayer = L.layerGroup().addTo(heMap);
+    [5, 10, 20].forEach((r) => L.circle([h.lat, h.lon], { radius: r * 1000, color: css("--text-muted"), weight: 1, fill: false, dashArray: "4 4" })
+      .bindTooltip(`${r} km`, { permanent: false }).addTo(heLayer));
+    for (const x of list) {
+      L.circleMarker([x.lat, x.lon], { radius: x.active ? 6 : 4, weight: 1, color: x.active ? css("--good") : css("--text-muted"),
+        fillColor: x.active ? css("--good") : css("--text-muted"), fillOpacity: x.active ? 0.9 : 0.45 })
+        .bindPopup(`<span class="mono">${esc(x.key.slice(0, 8))}…</span><br>${n1(x.distance_km, 1)} km · ${x.active ? "active" : "inactive"}`)
+        .on("popupopen", async (ev) => {
+          const e = await api(`/api/helium/hotspot/${encodeURIComponent(x.key)}`).catch(() => null);
+          if (e) ev.popup.setContent(`<b>${esc(e.name || "")}</b><br>${n1(x.distance_km, 1)} km away · ${x.active ? "active" : "inactive"}<br>${esc([e.city, e.state].filter(Boolean).join(", "))}${e.gain_dbi ? `<br>${e.gain_dbi} dBi${e.elevation_m != null ? ` · ${e.elevation_m} m` : ""}` : ""}${e.onboarded ? `<br>onboarded ${new Date(e.onboarded).toLocaleDateString()}` : ""}`);
+        })
+        .addTo(heLayer);
+    }
+    L.circleMarker([h.lat, h.lon], { radius: 9, weight: 2, color: "#8a6416", fillColor: "#d9ad45", fillOpacity: 1 })
+      .bindPopup(`<b>${esc(h.name || "this hotspot")}</b><br>this box`).addTo(heLayer);
+    setTimeout(() => heMap.invalidateSize(), 50);
+  }
+
   async function refreshHelium() {
     const [s, ups] = await Promise.all([api("/api/helium"), api("/api/lorawan/upstreams")]);
     const tiles = $("#he-tiles"), note = $("#he-note"); tiles.innerHTML = "";
@@ -506,6 +547,7 @@
       ["Mux upstream", up ? `${live?.alive ? "acknowledging" : "silent"} · ${up.push_sent} uplinks pushed, ${up.push_acked} acked, ${up.pull_resp} downlinks` : "not configured (add a helium upstream on 127.0.0.1:1680)"],
       ["Logs", "Diagnostics → Log → source <span class=\"mono\">helium-gateway</span>"],
     ]);
+    refreshHeliumMap(h).catch(console.error);
     $("#he-sources").textContent = `Updated ${ago(s.updated)}. Sources: gateway-rs local API, Helium entity service, Helium reward oracles, Solana mainnet RPC, CoinGecko.`;
   }
 

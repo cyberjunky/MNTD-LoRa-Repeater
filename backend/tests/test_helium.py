@@ -105,3 +105,33 @@ async def test_refresh_builds_the_snapshot(tmp_path, monkeypatch):
     assert len(h2._claims) == 2
     await h2.stop()
     await db.close()
+
+
+def test_distance_km():
+    from lorarepeater.helium import distance_km
+
+    assert round(distance_km(52.0, 5.0, 52.0, 5.0), 3) == 0
+    assert 110 < distance_km(52.0, 5.0, 53.0, 5.0) < 112          # one degree of latitude
+
+
+async def test_scan_nearby_pages_and_filters(tmp_path):
+    from lorarepeater.helium import NEARBY_KM
+
+    pages = {None: {"cursor": "c2", "items": [
+                 {"entity_key_str": "near-active", "is_active": True, "lat": 52.01, "long": 5.0},
+                 {"entity_key_str": "far", "is_active": False, "lat": 53.5, "long": 5.0}]},
+             "c2": {"cursor": None, "items": [
+                 {"entity_key_str": "near-inactive", "is_active": False, "lat": 52.0, "long": 5.1},
+                 {"entity_key_str": "no-location", "is_active": False, "lat": None, "long": None}]}}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=pages[req.url.params.get("cursor")])
+
+    db = Database(tmp_path / "n.db")
+    await db.open()
+    h = Helium(HeliumConfig(), db, transport=httpx.MockTransport(handler))
+    await h.scan_nearby(52.0, 5.0)
+    near = await h.nearby()
+    assert [x["key"] for x in near["hotspots"]] == ["near-active", "near-inactive"]
+    assert near["scan"]["total"] == 4 and near["scan"]["active"] == 1 and near["scan"]["radius_km"] == NEARBY_KM
+    await db.close()
