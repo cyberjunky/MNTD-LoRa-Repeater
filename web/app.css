@@ -31,8 +31,9 @@ html, body { margin: 0; background: var(--surface-0); color: var(--text-primary)
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 a { color: var(--accent); }
 
-.top { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; padding: 10px 16px;
-  background: var(--surface-1); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+.top { background: var(--surface-1); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+.top-inner { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; padding: 10px 24px;
+  max-width: 1800px; margin: 0 auto; }   /* same column as main */
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand h1 { font-size: 17px; margin: 0; font-weight: 600; }
 .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--text-muted); display: inline-block; }
