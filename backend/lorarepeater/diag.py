@@ -27,7 +27,7 @@ from .db import Database
 UNITS = ["lora-pkt-fwd", "lorarepeater", "systemd-timesyncd"]
 RESTARTABLE = list(UNITS)
 LOG_SOURCES = {**{u: ["-u", u] for u in UNITS}, "kernel": ["-k"], "all": []}
-NOISE = ("syncword not found",)  # lora_pkt_fwd debug chatter
+NOISE = ("syncword not found", "### [GPS] ###", "# GPS sync is disabled")  # lora_pkt_fwd chatter (no GPS on this box)
 SECRET_KEYS = ("token", "psk", "password", "secret", "key")
 BUTTON_PIN = 7
 FORWARDER_ENV = Path("/etc/default/lora-pkt-fwd")
