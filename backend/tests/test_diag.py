@@ -29,12 +29,6 @@ NRestarts=0
 Result=success
 ActiveEnterTimestamp=
 ExecMainPID=0
-
-Id=meshtasticd.service
-Description=meshtasticd.service
-LoadState=not-found
-ActiveState=inactive
-SubState=dead
 """
 
 JOURNAL = """2026-10-25T16:03:32+0200 lora_pkt_fwd[1182]: INFO: syncword not found at idx 517
@@ -52,7 +46,7 @@ def test_parse_env_file():
 
 def test_parse_systemctl_show():
     blocks = parse_systemctl_show(SYSTEMCTL_SHOW)
-    assert [b["Id"] for b in blocks] == ["lora-pkt-fwd.service", "systemd-timesyncd.service", "meshtasticd.service"]
+    assert [b["Id"] for b in blocks] == ["lora-pkt-fwd.service", "systemd-timesyncd.service"]
     assert blocks[0]["NRestarts"] == "2" and blocks[1]["ActiveEnterTimestamp"] == ""
 
 
@@ -86,7 +80,7 @@ def fake_run(monkeypatch):
         if cmd[0] == "journalctl":
             return 0, JOURNAL
         if cmd[0] == "./chip_id":
-            return 0, "Note: chip version is 0x10 (v1.0)\nINFO: concentrator EUI: 0x0016C001FF000001\n"
+            return 0, "Note: chip version is 0x10 (v1.0)\nINFO: concentrator EUI: 0x0016c001ff000001\n"
         return 0, f"{cmd[0]} ok"
 
     monkeypatch.setattr(diag, "run", run)
@@ -97,7 +91,6 @@ async def test_diag_endpoints(client, fake_run):
     svc = (await client.get("/api/diag/services")).json()
     assert svc[0]["unit"] == "lora-pkt-fwd" and svc[0]["restarts"] == 2 and svc[0]["restartable"]
     assert svc[1]["active"] == "inactive" and svc[1]["since"] is None
-    assert len(svc) == 2   # meshtasticd is not installed: hidden
 
     log = (await client.get("/api/diag/log?source=lora-pkt-fwd&lines=50")).json()
     assert log["lines"] == 2 and "syncword" not in log["text"]

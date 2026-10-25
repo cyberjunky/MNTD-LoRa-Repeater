@@ -3,8 +3,8 @@
 The HAT in this unit has no LED driver (the LP5562 footprint U6 and LED1 are unpopulated), so
 the two Pi LEDs are the indicators: ACT (green) and PWR (red).
 
-    green         forwarder, upstreams and mesh node all fine
-    green + red   degraded (an upstream or the mesh node is down)
+    green         forwarder and upstreams fine
+    green + red   degraded (an upstream network does not answer)
     red           forwarder not seen
     off           backend stopped; the kernel triggers (mmc0 / default-on) take over again
 
@@ -51,9 +51,9 @@ def set_state(name: str) -> None:
         _write(led, "trigger", "none") and _write(led, "brightness", "1" if on else "0")
 
 
-def health_state(forwarder_ok: bool, upstream_ok: bool, mesh_ok: bool) -> str:
+def health_state(forwarder_ok: bool, upstream_ok: bool) -> str:
     if not forwarder_ok:
         return "red"
-    if not upstream_ok or not mesh_ok:
+    if not upstream_ok:
         return "orange"
     return "green"

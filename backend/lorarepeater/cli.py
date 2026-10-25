@@ -17,7 +17,6 @@ from .config import Config
 from .db import Database
 from .gwmp import GwmpMux
 from .lorawan import Vendors
-from .mesh import MeshIngest
 from .meshsx import MeshSxEngine
 from .telegram import TelegramBridge
 from .timesync import TimeSync
@@ -27,14 +26,12 @@ async def _serve(cfg: Config) -> None:
     db = Database(cfg.db_path)
     await db.open()
     mux = GwmpMux(cfg.gwmp, db, Vendors(cfg.db_path.parent / "ieee"))
-    mesh = MeshIngest(cfg.mesh, db)
     timesync = TimeSync()
     meshsx = MeshSxEngine(cfg.meshsx, db, mux) if cfg.meshsx.enabled else None
-    telegram = TelegramBridge(cfg.telegram, db, meshsx=meshsx, mesh=mesh if cfg.mesh.enabled else None)
+    telegram = TelegramBridge(cfg.telegram, db, meshsx=meshsx)
     if cfg.hardware.led_enabled:
         led.set_state("orange")
     await mux.start()
-    await mesh.start()
     await timesync.start()
     if meshsx:
         await meshsx.start()
@@ -49,14 +46,13 @@ async def _serve(cfg: Config) -> None:
                 st = mux.status()
                 fwd_ok = st["forwarder_seen_s_ago"] is not None and st["forwarder_seen_s_ago"] < 120
                 up_ok = not st["upstreams"] or any(u["alive"] for u in st["upstreams"])
-                mesh_ok = mesh.connected if cfg.mesh.enabled else True
-                led.set_state(led.health_state(fwd_ok, up_ok, mesh_ok))
+                led.set_state(led.health_state(fwd_ok, up_ok))
             if asyncio.get_running_loop().time() - last_prune > 6 * 3600:
                 await db.prune(cfg.retention_days)
                 last_prune = asyncio.get_running_loop().time()
 
     prune_task = asyncio.create_task(housekeeping_loop())
-    app = create_app(cfg, db, mux, mesh, timesync, extras={"meshsx": meshsx, "telegram": telegram})
+    app = create_app(cfg, db, mux, timesync, extras={"meshsx": meshsx, "telegram": telegram})
     server = uvicorn.Server(uvicorn.Config(app, host=cfg.web.host, port=cfg.web.port, log_level="info", loop="asyncio"))
 
     loop = asyncio.get_running_loop()
@@ -73,7 +69,6 @@ async def _serve(cfg: Config) -> None:
         if meshsx:
             await meshsx.stop()
         await timesync.stop()
-        await mesh.stop()
         await mux.stop()
         if cfg.hardware.led_enabled:
             led.set_state("off")
@@ -96,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="lorarepeater", description="LoRaWAN + Meshtastic repeater backend")
     p.add_argument("--version", action="version", version=__version__)
     sub = p.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("serve", help="run the mux, mesh ingest and web GUI")
+    s = sub.add_parser("serve", help="run the LoRaWAN mux, the Meshtastic node and the web GUI")
     s.add_argument("--config", "-c", default=None, help="YAML config file (defaults are used when omitted)")
     s.add_argument("--debug", action="store_true")
     c = sub.add_parser("check-config", help="load and print the effective configuration")

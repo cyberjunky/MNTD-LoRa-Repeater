@@ -1,7 +1,7 @@
 """Telegram bridge: mesh text messages in, /send and /dm out.
 
 Plain Bot API over HTTPS long polling (httpx), no framework. Works with either Meshtastic
-backend: the SX1302 engine (meshsx) or a meshtasticd/USB node (mesh ingest).
+backend: the SX1302 Meshtastic node (meshsx).
 
 Commands (in an allowed chat):
     /status            node, radio and counters
@@ -29,11 +29,10 @@ API = "https://api.telegram.org/bot{token}/{method}"
 
 
 class TelegramBridge:
-    def __init__(self, cfg: TelegramConfig, db: Database, meshsx: Any = None, mesh: Any = None):
+    def __init__(self, cfg: TelegramConfig, db: Database, meshsx: Any = None):
         self.cfg = cfg
         self.db = db
         self.meshsx = meshsx
-        self.mesh = mesh
         self.offset = 0
         self.connected = False
         self.bot_name: str | None = None
@@ -54,8 +53,6 @@ class TelegramBridge:
         self._client = httpx.AsyncClient(timeout=self.cfg.poll_timeout_s + 10)
         if self.meshsx is not None:
             self.meshsx.add_text_listener(self.on_mesh_text)
-        if self.mesh is not None and hasattr(self.mesh, "add_text_listener"):
-            self.mesh.add_text_listener(self.on_mesh_text)
         self._task = asyncio.create_task(self._poll_loop(), name="telegram")
 
     async def stop(self) -> None:
@@ -164,10 +161,6 @@ class TelegramBridge:
             if self.meshsx is not None:
                 pid = await self.meshsx.send_text(text, to=to)
                 ok = pid is not None
-            elif self.mesh is not None and getattr(self.mesh, "iface", None) is not None:
-                loop = asyncio.get_running_loop()
-                dest = "^all" if to == BROADCAST else node_id_str(to)
-                await loop.run_in_executor(None, lambda: self.mesh.iface.sendText(text, destinationId=dest))
                 ok = True
             else:
                 ok = False
@@ -190,10 +183,7 @@ class TelegramBridge:
                     f"rx {c['rx']} · decoded {c['decoded']} · relayed {c['relayed']} · tx {c['tx']}\n"
                     f"duty cycle used {s['duty_used_pct_1h']}% of {s['duty_limit_pct']}% (1 h)\n"
                     f"last rx {s['last_rx_s_ago']} s ago")
-        if self.mesh is not None:
-            s = self.mesh.status()
-            return f"meshtasticd {'connected' if s['connected'] else 'offline'} · {s['my_node']} · packets {s['counters']['packets']}"
-        return "no mesh backend"
+        return "Meshtastic node disabled (meshsx.enabled in config.yaml)"
 
     async def _nodes_text(self) -> str:
         rows = await self.db.fetch("SELECT node_id, long_name, short_name, hops_away, snr, last_heard FROM mesh_nodes "

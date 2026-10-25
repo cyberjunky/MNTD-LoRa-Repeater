@@ -104,7 +104,7 @@ CREATE TABLE IF NOT EXISTS mesh_packets (
     text        TEXT,                     -- TEXT_MESSAGE_APP body if any
     payload     TEXT,                     -- JSON of the decoded payload (position, telemetry, ...)
     direction   TEXT DEFAULT 'rx',        -- 'rx' heard on air, 'tx' originated by us
-    source      TEXT,                     -- 'sx1302' (our own node) or 'meshtasticd'
+    source      TEXT,                     -- 'sx1302' (our own node)
     relayed_by_us INTEGER DEFAULT 0,      -- 1 if we rebroadcast this frame
     airtime_ms  REAL,
     channel_hash INTEGER                  -- header channel hash (identifies unknown/private channels)

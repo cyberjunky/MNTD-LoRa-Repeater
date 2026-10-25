@@ -71,8 +71,7 @@ to a chat or channel that should receive every text heard on the mesh. Commands:
    the IQ polarity is the suspect; both are set in `meshsx.py` (`ipol: false`, `prea: 16`).
 4. `/status` in Telegram, or the overview tile, shows airtime used against the duty cycle.
 
-If RX works but TX never does, the fallback is `tx_enabled: false` (listen-only plus Telegram
-reading) or a USB MeshStick with `meshtasticd` ([research/meshtastic-options.md](research/meshtastic-options.md)).
+If RX works but TX never does, set `tx_enabled: false` (listen-only plus Telegram reading).
 
 ## Prior art
 

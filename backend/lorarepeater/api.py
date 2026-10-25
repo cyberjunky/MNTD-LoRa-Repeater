@@ -20,7 +20,6 @@ from .config import Config
 from .db import Database
 from .diag import Diag, add_diag_routes
 from .gwmp import GwmpMux
-from .mesh import MeshIngest
 from .timesync import TimeSync
 
 log = logging.getLogger(__name__)
@@ -48,7 +47,7 @@ def _read_cpu_temp(path: str) -> float | None:
         return None
 
 
-def create_app(cfg: Config, db: Database, mux: GwmpMux, mesh: MeshIngest, timesync: TimeSync,
+def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync,
                extras: dict[str, Any] | None = None) -> FastAPI:
     """`extras` maps a name to an optional object with a status() method (meshsx, telegram)."""
     extras = extras or {}
@@ -110,7 +109,6 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, mesh: MeshIngest, timesy
             "cpu_temp_c": _read_cpu_temp(cfg.hardware.cpu_temp_path),
             "db": {"path": str(cfg.db_path), "retention_days": cfg.retention_days, **(counts or {})},
             "gwmp": mux.status(),
-            "mesh": mesh.status(),
             "time": timesync.status(),
             **{name: (obj.status() if obj is not None else None) for name, obj in extras.items()},
         }

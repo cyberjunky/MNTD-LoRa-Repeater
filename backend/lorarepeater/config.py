@@ -31,18 +31,6 @@ class GwmpConfig(BaseModel):
     upstreams: list[UpstreamConfig] = Field(default_factory=list)
 
 
-class MeshConfig(BaseModel):
-    """Connection to meshtasticd (TCP API) or a USB node (serial)."""
-
-    enabled: bool = True
-    # "tcp" -> host:port, "serial" -> device path
-    transport: str = "tcp"
-    host: str = "127.0.0.1"
-    port: int = 4403
-    device: str = "/dev/ttyACM0"
-    reconnect_s: float = 15.0
-
-
 class MeshChannelConfig(BaseModel):
     name: str = "LongFast"
     psk: str = "AQ=="  # base64. "AQ==" = Meshtastic default key #1, "" = unencrypted, 16/32 bytes = own key
@@ -110,7 +98,6 @@ class Config(BaseModel):
     db_path: Path = Path("data/lorarepeater.db")
     retention_days: int = 90
     gwmp: GwmpConfig = Field(default_factory=GwmpConfig)
-    mesh: MeshConfig = Field(default_factory=MeshConfig)
     meshsx: MeshSxConfig = Field(default_factory=MeshSxConfig)
     telegram: TelegramConfig = Field(default_factory=TelegramConfig)
     web: WebConfig = Field(default_factory=WebConfig)

@@ -22,8 +22,7 @@ not affiliated with or endorsed by either company; the icon is an original drawi
 - **Meshtastic repeater on the same radio and antenna**: a patched SX1302 HAL puts the
   concentrator's service channel on EU_868 LongFast with the Meshtastic sync word, and a Python
   node (ROUTER_LATE) decrypts, logs, relays, ACKs and sends. Every packet, hop count, relay
-  node, RSSI/SNR, airtime and the node database are recorded. A second SX1262 radio with
-  `meshtasticd` is supported as an alternative.
+  node, RSSI/SNR, airtime and the node database are recorded.
 - **Telegram bridge**: mesh texts into a chat or channel, `/send` and `/dm` back to the mesh.
 - **No GPS**: the Goldspot HAT does not wire the RAK2287's GNSS to the Pi (no I2C, no UART, no
   antenna lead). The clock comes from NTP via the stock `systemd-timesyncd`, shown in the GUI.
@@ -41,7 +40,7 @@ not affiliated with or endorsed by either company; the icon is an original drawi
 sudo apt install -y git
 git clone https://github.com/cyberjunky/MNTD-LoRa-Repeater.git
 cd MNTD-LoRa-Repeater
-sudo install/install.sh                    # MESH=meshstick for a USB SX1262, MESH=none for LoRaWAN only
+sudo install/install.sh
 sudo reboot
 ```
 
@@ -54,7 +53,7 @@ Then open `http://<hostname>:8080/` and add your LoRaWAN network servers to
 |---|---|
 | `backend/` | Python package `lorarepeater` (FastAPI, asyncio UDP mux, Meshtastic engine, time-sync monitor, diagnostics) and tests |
 | `web/` | The dashboard (static HTML/CSS/JS) |
-| `install/` | `install.sh`, systemd units, sx1302_hal patch, reset script, polkit and udev rules, meshtasticd templates |
+| `install/` | `install.sh`, systemd units, sx1302_hal patch, reset script, polkit and udev rules |
 | `docs/` | [hardware](docs/hardware.md), [firmware analysis](docs/firmware-analysis.md), [architecture](docs/architecture.md), [Meshtastic on the SX1302](docs/meshtastic-on-sx1302.md), [install](docs/install.md), [research](docs/research/) |
 | `tools/` | `extract_initramfs.py` to unpack the stock firmware image |
 | `photos/` | The hardware |
@@ -68,10 +67,11 @@ kernel whose initramfs *is* the root filesystem (Buildroot 2020.02, LZMA cpio). 
 
 ```sh
 cd backend
-python -m venv .venv && . .venv/bin/activate      # .venv\Scripts\activate on Windows
+python -m venv .venv
+.venv/bin/activate             # .venv\Scripts\activate on Windows
 pip install -e ".[dev,mesh]"
 pytest
-lorarepeater serve                                # defaults: UDP 1730, web 8080, data/ dir
+lorarepeater serve             # defaults: UDP 1730, web 8080, data/ dir
 ```
 
 Without hardware the service still runs: point any Semtech UDP packet forwarder at
@@ -80,7 +80,7 @@ Without hardware the service still runs: point any Semtech UDP packet forwarder 
 ## Status
 
 First hardware bring-up on 2026-10-25: the concentrator answers with reset on GPIO 25
-(EUI 0016C001FF000001), the patched forwarder starts with the Meshtastic service channel,
+and reports its EUI, the patched forwarder starts with the Meshtastic service channel,
 and the backend sends NodeInfo beacons. The LP5562 LED driver footprint on this HAT revision is
 unpopulated and the GNSS is not wired to the Pi, so both were removed from the design. Still
 to verify on air: Meshtastic receive and relay (bench procedure in

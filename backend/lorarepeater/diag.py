@@ -24,7 +24,7 @@ from fastapi.responses import PlainTextResponse
 from .config import Config
 from .db import Database
 
-UNITS = ["lora-pkt-fwd", "lorarepeater", "systemd-timesyncd", "meshtasticd"]
+UNITS = ["lora-pkt-fwd", "lorarepeater", "systemd-timesyncd"]
 RESTARTABLE = list(UNITS)
 LOG_SOURCES = {**{u: ["-u", u] for u in UNITS}, "kernel": ["-k"], "all": []}
 NOISE = ("syncword not found",)  # lora_pkt_fwd debug chatter
@@ -192,8 +192,6 @@ class Diag:
             return [{"unit": u, "active": "unknown", "sub": out.strip()[:80]} for u in UNITS]
         rows = []
         for blk in parse_systemctl_show(out):
-            if blk.get("LoadState") == "not-found":   # e.g. meshtasticd in the default mode
-                continue
             unit = blk.get("Id", "").removesuffix(".service")
             rows.append({
                 "unit": unit, "description": blk.get("Description"), "load": blk.get("LoadState"),

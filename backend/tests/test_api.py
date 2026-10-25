@@ -3,7 +3,7 @@ async def test_status(client):
     assert r.status_code == 200
     body = r.json()
     assert body["db"]["lorawan"] == 1 and body["db"]["mesh"] == 1 and body["db"]["nodes"] == 1
-    assert body["gwmp"]["upstreams"] == [] and body["mesh"]["enabled"] is False
+    assert body["gwmp"]["upstreams"] == [] and "mesh" not in body
     assert body["time"] == {}
 
 

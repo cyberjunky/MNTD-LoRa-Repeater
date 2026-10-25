@@ -19,9 +19,9 @@ except hardware facts ([firmware-analysis.md](firmware-analysis.md)).
 the concentrator's service channel**: a small patch gives that channel (and 250 kHz
 transmissions) the Meshtastic sync word while the eight LoRaWAN channels keep theirs. One radio,
 one outdoor antenna, both networks. Full description, trade-offs and bench procedure in
-[meshtastic-on-sx1302.md](meshtastic-on-sx1302.md). The alternative, a second SX1262 radio
-with `meshtasticd` (USB MeshStick or SPI1 module), is still supported by the installer and the
-backend (`MESH=meshstick`), see [research/meshtastic-options.md](research/meshtastic-options.md).
+[meshtastic-on-sx1302.md](meshtastic-on-sx1302.md). A second radio with `meshtasticd` was the
+fallback plan ([research/meshtastic-options.md](research/meshtastic-options.md)); it was dropped
+once the SX1302 node worked on the hardware.
 
 ## Processes
 
@@ -42,7 +42,7 @@ backend (`MESH=meshstick`), see [research/meshtastic-options.md](research/meshta
    |              hands 869.525/SF11BW250 frames to the mesh engine, sends txpk    |
    |  meshsx.py : Meshtastic node (decrypt, decode, dedup, relay, ACK, NodeInfo)   |
    |  telegram.py: bot bridge (/send, /dm, texts -> chat)                          |
-   |  timesync.py: timedatectl          mesh.py : meshtasticd client (alternative) |
+   |  timesync.py: timedatectl                                                     |
    |  diag.py   : services, journal, hardware scan, concentrator probe, actions     |
    |  db.py     : SQLite (WAL)          api.py  : FastAPI + WebSocket + static GUI |
    +------+------------------------------+-----------------------+----------------+
@@ -78,12 +78,6 @@ backend (`MESH=meshstick`), see [research/meshtastic-options.md](research/meshta
 - Transmissions go back through the forwarder as `txpk` (`imme` for own messages, scheduled on
   the SX1302 counter for relays). The forwarder's `TX_ACK` errors appear in the event log.
 - `telegram.py` posts received texts to a chat and sends `/send` and `/dm` messages.
-
-### Meshtastic path (alternative: meshtasticd + SX1262)
-
-- `meshtasticd` owns a USB or SPI1 SX1262 and is the repeater; `mesh.py` connects over TCP 4403
-  with the official `meshtastic` package and mirrors packets and nodes into the same tables.
-  The Telegram bridge works with this backend too. The Meshtastic web client is on port 9443.
 
 ### Time (and the GPS that is not there)
 

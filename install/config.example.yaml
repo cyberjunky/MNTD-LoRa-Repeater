@@ -25,7 +25,7 @@ gwmp:
 # Meshtastic on the RAK2287 itself (patched sx1302_hal, service channel at 869.525 MHz).
 # This is the default: one radio, one antenna. The box is a real Meshtastic node.
 meshsx:
-  enabled: true  # meshsx
+  enabled: true           # false = LoRaWAN only
   freq_mhz: 869.525
   datr: SF11BW250         # EU_868 LongFast
   codr: 4/5
@@ -53,14 +53,6 @@ telegram:
   notify_chat_id: null      # chat or channel id that receives every mesh text
   notify_all_text: true
 
-# Alternative Meshtastic backend: meshtasticd with its own SX1262 radio (USB MeshStick or SPI1).
-mesh:
-  enabled: false  # mesh
-  transport: tcp          # tcp = meshtasticd on this box, serial = USB node
-  host: 127.0.0.1
-  port: 4403
-  device: /dev/ttyACM0
-  reconnect_s: 15
 
 web:
   host: 0.0.0.0

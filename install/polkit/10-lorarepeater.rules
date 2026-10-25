@@ -7,7 +7,7 @@ polkit.addRule(function (action, subject) {
     if (action.id !== "org.freedesktop.systemd1.manage-units") {
         return polkit.Result.NOT_HANDLED;
     }
-    var units = ["lora-pkt-fwd.service", "lorarepeater.service", "systemd-timesyncd.service", "meshtasticd.service"];
+    var units = ["lora-pkt-fwd.service", "lorarepeater.service", "systemd-timesyncd.service"];
     var verbs = ["start", "stop", "restart"];
     if (action.lookup("unit") === "lorarepeater-clear-logs.service" && action.lookup("verb") === "start") {
         return polkit.Result.YES;

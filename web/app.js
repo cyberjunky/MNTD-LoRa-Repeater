@@ -285,14 +285,13 @@
     status = await api("/api/status");
     $("#title").textContent = status.title;
     document.title = status.title;
-    const g = status.gwmp, m = status.mesh, clk = status.time, sx = status.meshsx, tg = status.telegram;
+    const g = status.gwmp, clk = status.time, sx = status.meshsx, tg = status.telegram;
     const fwdOk = g.forwarder_seen_s_ago != null && g.forwarder_seen_s_ago < 120;
     const upOk = !g.upstreams.length || g.upstreams.some((u) => u.alive);
-    const meshOk = sx ? fwdOk : (!m.enabled || m.connected);
     const meshTile = sx
       ? tile("Meshtastic node", `${sx.node_id}`, `${sx.long_name} · ${sx.role} · ${sx.freq_mhz} MHz ${sx.datr}${sx.last_rx_s_ago != null ? ` · rx ${sx.last_rx_s_ago}s ago` : ""}`, fwdOk ? "good" : "critical")
-      : tile("Meshtastic node", m.enabled ? (m.connected ? "connected" : "offline") : "disabled", m.my_node?.long_name ? `${m.my_node.long_name} · ${m.my_node.role || ""}` : m.target, !m.enabled ? "unknown" : m.connected ? "good" : "critical");
-    $("#health-dot").className = "dot " + (!fwdOk ? "critical" : (!upOk || !meshOk) ? "warning" : "good");
+      : tile("Meshtastic node", "disabled", "meshsx.enabled in config.yaml", "unknown");
+    $("#health-dot").className = "dot " + (!fwdOk ? "critical" : !upOk ? "warning" : "good");
     const tiles = $("#tiles"); tiles.innerHTML = "";
     tiles.append(
       tile("Packet forwarder", fwdOk ? "running" : "no data", g.forwarder_seen_s_ago == null ? "never seen" : `last seen ${g.forwarder_seen_s_ago}s ago · EUI ${g.gateway_eui || "?"}`, fwdOk ? "good" : "critical"),
@@ -533,7 +532,7 @@
   async function refreshDiag() {
     if (!DIAG.srcReady) {
       const sel = $("#diag-log-src");
-      for (const s of ["lora-pkt-fwd", "lorarepeater", "systemd-timesyncd", "meshtasticd", "kernel", "all"]) sel.append(el("option", { value: s }, s));
+      for (const s of ["lora-pkt-fwd", "lorarepeater", "systemd-timesyncd", "kernel", "all"]) sel.append(el("option", { value: s }, s));
       DIAG.srcReady = true;
     }
     await Promise.all([refreshDiagSystem(), refreshDiagServices(), refreshDiagLog(), refreshDiagHardware(), refreshDiagConfig()].map((p) => p.catch(console.error)));

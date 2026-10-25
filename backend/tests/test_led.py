@@ -2,10 +2,9 @@ from lorarepeater import led
 
 
 def test_health_state():
-    assert led.health_state(True, True, True) == "green"
-    assert led.health_state(True, False, True) == "orange"
-    assert led.health_state(True, True, False) == "orange"
-    assert led.health_state(False, False, False) == "red"
+    assert led.health_state(True, True) == "green"
+    assert led.health_state(True, False) == "orange"
+    assert led.health_state(False, True) == "red"
 
 
 def test_set_state_drives_both_leds(tmp_path, monkeypatch):

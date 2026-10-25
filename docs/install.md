@@ -6,8 +6,6 @@
   the concentrator without a LoRa antenna.
 - A microSD card (16 GB or more). The original card can be reused after you back it up
   (`firmware/README.md` explains what is on it).
-- For Meshtastic: an SX1262 radio. Recommended: **Elecrow MeshStick** (USB). See
-  [research/meshtastic-options.md](research/meshtastic-options.md) for alternatives.
 - Optional: a second antenna position with a metre or two of vertical separation from the
   LoRaWAN antenna.
 
@@ -42,19 +40,18 @@ The script (idempotent, re-run any time):
    other pin automatically,
 6. writes `/etc/lorarepeater/global_conf.json` from the original EU868 profile,
 7. installs the Python backend into `/opt/lorarepeater/venv`, the systemd units and the
-   polkit/udev rules,
-8. optionally installs `meshtasticd` and configures the radio and role.
+   polkit/udev rules.
 
 Environment variables for the script:
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `RESET_PIN` | `auto` | `25`, `17` or `auto` (EEPROM present → 25, then verified) |
-| `MESH` | `sx1302` | `sx1302` (Meshtastic on the RAK2287 service channel, one antenna), `meshstick` (USB SX1262 driven by meshtasticd), `serial` (standalone USB node, backend reads the serial port), `none` |
-| `MESH_ROLE` | `ROUTER_LATE` | Meshtastic device role |
 | `HAL_TAG` | `V2.1.0` | sx1302_hal git tag |
 
-Example with a MeshStick instead of the on-concentrator node: `sudo MESH=meshstick install/install.sh`.
+Meshtastic runs on the concentrator's service channel. Name, role, preset (`datr`) and channels
+are in the `meshsx` section of `/etc/lorarepeater/config.yaml`; `enabled: false` there gives a
+LoRaWAN-only gateway.
 
 After installing, set the node name, role, channel key and (optionally) the Telegram bot in
 `/etc/lorarepeater/config.yaml` (`meshsx:` and `telegram:` sections), then
@@ -87,7 +84,7 @@ bridge (`chirpstack-gateway-bridge` in Semtech UDP mode) in front of the server.
 ## 4. Check
 
 ```sh
-systemctl status lora-pkt-fwd lorarepeater meshtasticd
+systemctl status lora-pkt-fwd lorarepeater
 journalctl -u lora-pkt-fwd -f        # "concentrator started", rxpk lines
 timedatectl timesync-status          # NTP server and sync state (no GPS on this hardware)
 curl -s localhost:8080/api/status | jq
@@ -97,8 +94,7 @@ Web GUI: `http://<hostname>:8080/`. Its **Diagnostics** tab shows service states
 buttons, the journal of each unit (filter, download), an I2C/GPIO/device scan, a concentrator
 probe (chip_id), Clear database / Clear logs buttons and the effective configuration.
 The same from a shell: `sudo -u lorarepeater /opt/lorarepeater/venv/bin/lorarepeater clear-db -c
-/etc/lorarepeater/config.yaml [--nodes]` and `sudo systemctl start lorarepeater-clear-logs`. Meshtastic web client (meshtasticd modes only):
-`https://<hostname>:9443/`.
+/etc/lorarepeater/config.yaml [--nodes]` and `sudo systemctl start lorarepeater-clear-logs`.
 
 ## Troubleshooting
 
@@ -109,8 +105,9 @@ The same from a shell: `sudo -u lorarepeater /opt/lorarepeater/venv/bin/lorarepe
   apply; run `python3 install/patch_sx1302_hal.py /opt/sx1302_hal && make -C /opt/sx1302_hal`.
 - **GPS**: there is none. The HAT does not connect the RAK2287's GNSS (I2C, UART and the
   antenna u.FL are all unconnected). Set `meshsx.position` for the node's announced location.
-- **Meshtastic not connected**: `journalctl -u meshtasticd -f`; for a MeshStick check `lsusb`
-  shows `1a86:5512`.
+- **No Meshtastic traffic**: the Meshtastic tab's Channels table and the forwarder log (rxpk at
+  869.525 with the 250 kHz data rate) show whether anything arrives; local meshes may use another
+  preset than LongFast (set `meshsx.datr`, re-run the installer).
 - **Front light**: the Pi's ACT (green) and PWR (red) LEDs, driven by the backend. Green =
   healthy, both = degraded, red = forwarder silent. If they keep their stock behaviour, check
   that `/sys/class/leds/ACT/brightness` is group `gpio` writable (udev rule).

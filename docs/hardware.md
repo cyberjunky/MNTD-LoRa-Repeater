@@ -27,7 +27,7 @@ Tags: **seen** = visible in photos or firmware; **inferred** = deduced, verify o
 | 13 | IO expander enable (sidetable boards only) | Harmless on RAK boards |
 | 14 / 15 | UART | Not connected to the HAT (both pins follow the Pi's pull resistors). |
 | 17 | SX1302 reset on `rakspot`, `rakspot_v2`, `blackspot` | Not this unit; pulsing it does nothing |
-| 25 | SX1302 reset on `rakspot_v3` (EEPROM present) and sidetable | **Confirmed on this unit** (2026-10-25: chip_id answers only after a pulse on 25; EUI 0016C001FF000001) |
+| 25 | SX1302 reset on `rakspot_v3` (EEPROM present) and sidetable | **Confirmed on this unit** (2026-10-25: chip_id answers only after a pulse on 25) |
 | 6 | Externally pulled high by the HAT | Only free header pin the HAT drives; pulsing it low changes nothing observable. |
 
 Everything else on the 40-pin header is free as far as the firmware shows. SPI1
