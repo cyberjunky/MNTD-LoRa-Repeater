@@ -247,6 +247,14 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, mesh: MeshIngest, timesy
             return FileResponse(web_dir / "index.html")
 
         app.mount("/static", StaticFiles(directory=web_dir), name="static")
+
+        @app.middleware("http")
+        async def revalidate_gui(request, call_next):
+            # browsers must re-check the GUI files (ETag) so an update shows without a hard reload
+            response = await call_next(request)
+            if request.url.path == "/" or request.url.path.startswith("/static/"):
+                response.headers["Cache-Control"] = "no-cache"
+            return response
     else:
         log.warning("no web directory found (web.dir=%s, tried %s); GUI disabled",
                     cfg.web.dir, ", ".join(str(c) for c in WEB_DIR_CANDIDATES))

@@ -35,8 +35,10 @@ async def test_index_serves_gui(client):
     r = await client.get("/")
     assert r.status_code == 200
     assert "<html" in r.text.lower()
+    assert r.headers["cache-control"] == "no-cache"
     r = await client.get("/static/app.js")
-    assert r.status_code == 200
+    assert r.status_code == 200 and r.headers["cache-control"] == "no-cache"
+    assert "cache-control" not in (await client.get("/api/status")).headers
 
 
 def test_find_web_dir(tmp_path):
