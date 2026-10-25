@@ -30,7 +30,7 @@ config.local.yaml
 .DS_Store
 Thumbs.db
 
-# Claude Code local state
+# Local assistant/editor state
 .claude/
 .agents/
 skills-lock.json
