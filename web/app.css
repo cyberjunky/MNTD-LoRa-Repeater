@@ -133,3 +133,12 @@ button:disabled { opacity: .5; cursor: wait; }
 .pager span { margin: 0 6px; }
 .pager[hidden] { display: none; }
 .brand .logo { width: 30px; height: 30px; display: block; }
+
+/* about */
+.about { max-width: 980px; margin: 0 auto; }
+.about-head { display: flex; align-items: center; gap: 20px; }
+.about-head h2 { margin: 0 0 4px; font-size: 22px; }
+.about-head p { margin: 0; }
+.prose p { margin: 0 0 12px; line-height: 1.6; color: var(--text-primary); }
+.prose p.muted { color: var(--text-muted); }
+.links { margin: 0; padding-left: 18px; line-height: 1.9; }

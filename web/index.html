@@ -17,6 +17,7 @@
     <button data-tab="upstreams">Upstreams</button>
     <button data-tab="events">Events</button>
     <button data-tab="diag">Diagnostics</button>
+    <button data-tab="about">About</button>
   </nav>
   <div class="controls">
     <label>Range
@@ -101,6 +102,66 @@
   <!-- ============================ EVENTS ============================== -->
   <section id="tab-events" class="tab">
     <div class="card"><h3>Service events</h3><table class="tbl" id="events"></table></div>
+  </section>
+
+  <!-- ============================ ABOUT ============================== -->
+  <section id="tab-about" class="tab">
+    <div class="about">
+      <div class="card about-head">
+        <img src="/static/icon.svg" alt="" width="72" height="72">
+        <div>
+          <h2>MNTD LoRa Repeater</h2>
+          <p class="muted" id="about-version">LoRaWAN gateway and Meshtastic repeater for the MNTD Goldspot</p>
+        </div>
+      </div>
+
+      <div class="card prose">
+        <h3>How this started</h3>
+        <p>I had an MNTD Goldspot sitting on a shelf. It was bought as a Helium hotspot, and once that
+          project wound down it did not earn anything any more. It is a well-made box though: a
+          Raspberry Pi 4 and a RAKwireless concentrator in a solid gold aluminium case, with a proper
+          antenna. Too good to throw away.</p>
+        <p>So I wanted to give it a second life as something useful for the people around me: a
+          LoRaWAN gateway for The Things Network and other networks, and a Meshtastic repeater, with a
+          clear web page showing everything it hears, relays and sends, all stored in a database.</p>
+        <p>Along the way the hardware had a few surprises. The concentrator reset turned out to be on
+          GPIO 25, the GPS module on the concentrator is not wired to the Pi on this board, and the LED
+          driver chip is not even fitted, so the front light now shows the Pi's own LEDs. Meshtastic
+          normally needs its own radio, but a small patch to Semtech's driver lets the same SX1302
+          listen to Meshtastic on its spare channel while the other eight channels keep serving
+          LoRaWAN: one radio, one antenna, both networks.</p>
+        <p>The first real traffic came in when I moved the box upstairs and connected the antenna:
+          dozens of LoRaWAN devices in the neighbourhood within minutes. A little later the gateway
+          was registered with TTN and sent its first downlinks. Now it runs on a stock Raspberry Pi OS
+          card with one install script, and nothing of the old firmware.</p>
+        <p class="muted">cyberjunky</p>
+      </div>
+
+      <div class="grid2">
+        <div class="card prose">
+          <h3>Links</h3>
+          <ul class="links">
+            <li><a href="https://github.com/cyberjunky/MNTD-LoRa-Repeater" target="_blank" rel="noopener">Source code on GitHub</a></li>
+            <li><a href="https://github.com/cyberjunky/MNTD-LoRa-Repeater/issues" target="_blank" rel="noopener">Issue tracker</a>: bugs, questions and ideas</li>
+            <li><a href="https://github.com/cyberjunky/MNTD-LoRa-Repeater/blob/master/docs/install.md" target="_blank" rel="noopener">Installation guide</a></li>
+            <li><a href="https://github.com/cyberjunky/MNTD-LoRa-Repeater/blob/master/docs/hardware.md" target="_blank" rel="noopener">Hardware notes</a></li>
+            <li><a href="https://github.com/cyberjunky/MNTD-LoRa-Repeater/blob/master/docs/meshtastic-on-sx1302.md" target="_blank" rel="noopener">Meshtastic on the SX1302</a></li>
+            <li><a href="https://github.com/cyberjunky/MNTD-LoRa-Repeater/blob/master/LICENSE" target="_blank" rel="noopener">MIT licence</a></li>
+          </ul>
+        </div>
+        <div class="card prose">
+          <h3>Built on</h3>
+          <ul class="links">
+            <li>The hardware by <b>MNTD</b> and <b>RAKwireless</b>; this project is independent and not affiliated with either</li>
+            <li><a href="https://github.com/Lora-net/sx1302_hal" target="_blank" rel="noopener">Semtech sx1302_hal</a>, the concentrator driver and packet forwarder</li>
+            <li><a href="https://meshtastic.org" target="_blank" rel="noopener">Meshtastic</a> and its protocol definitions</li>
+            <li><a href="https://www.thethingsnetwork.org" target="_blank" rel="noopener">The Things Network</a></li>
+            <li>The IEEE registration authority, for device vendor names</li>
+            <li><a href="https://www.raspberrypi.com/software/" target="_blank" rel="noopener">Raspberry Pi OS</a>, FastAPI and SQLite</li>
+          </ul>
+        </div>
+      </div>
+    </div>
   </section>
 
   <!-- ============================ DIAGNOSTICS ========================= -->

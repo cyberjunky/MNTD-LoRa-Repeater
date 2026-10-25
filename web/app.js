@@ -440,6 +440,10 @@
     ], downs, { empty: "no downlinks yet" });
   }
 
+  async function refreshAbout() {
+    if (status) $("#about-version").textContent = `Version ${status.version} · running ${ago(Date.now() / 1000 - status.uptime_s).replace(" ago", "")} · LoRaWAN gateway and Meshtastic repeater for the MNTD Goldspot`;
+  }
+
   async function refreshEvents() { table($("#events"), EVENT_COLS, await api("/api/events?limit=200")); }
 
   // ---------------------------------------------------------------- diagnostics
@@ -580,7 +584,7 @@
   }
 
   // ---------------------------------------------------------------- orchestration
-  const refreshTab = (name) => ({ overview: refreshOverview, lorawan: refreshLorawan, mesh: refreshMesh, upstreams: refreshUpstreams, events: refreshEvents, diag: refreshDiag }[name]().catch(console.error));
+  const refreshTab = (name) => ({ overview: refreshOverview, lorawan: refreshLorawan, mesh: refreshMesh, upstreams: refreshUpstreams, events: refreshEvents, diag: refreshDiag, about: refreshAbout }[name]().catch(console.error));
   async function refreshAll() { try { await refreshStatus(); await refreshTab(tab); } catch (e) { console.error(e); } }
   // tabs read the status (gateway EUI, node, channels): load it before the first tab renders
   refreshStatus().catch(console.error).finally(() => showTab(tab));
