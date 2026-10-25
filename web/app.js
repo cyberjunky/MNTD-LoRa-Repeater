@@ -211,21 +211,26 @@
     status = await api("/api/status");
     $("#title").textContent = status.title;
     document.title = status.title;
-    const g = status.gwmp, m = status.mesh, gps = status.gps;
+    const g = status.gwmp, m = status.mesh, gps = status.gps, sx = status.meshsx, tg = status.telegram;
     const fwdOk = g.forwarder_seen_s_ago != null && g.forwarder_seen_s_ago < 120;
     const upOk = !g.upstreams.length || g.upstreams.some((u) => u.alive);
-    const meshOk = !m.enabled || m.connected;
+    const meshOk = sx ? fwdOk : (!m.enabled || m.connected);
+    const meshTile = sx
+      ? tile("Meshtastic node", `${sx.node_id}`, `${sx.long_name} · ${sx.role} · ${sx.freq_mhz} MHz ${sx.datr}${sx.last_rx_s_ago != null ? ` · rx ${sx.last_rx_s_ago}s ago` : ""}`, fwdOk ? "good" : "critical")
+      : tile("Meshtastic node", m.enabled ? (m.connected ? "connected" : "offline") : "disabled", m.my_node?.long_name ? `${m.my_node.long_name} · ${m.my_node.role || ""}` : m.target, !m.enabled ? "unknown" : m.connected ? "good" : "critical");
     $("#health-dot").className = "dot " + (!fwdOk ? "critical" : (!upOk || !meshOk) ? "warning" : "good");
     const tiles = $("#tiles"); tiles.innerHTML = "";
     tiles.append(
       tile("Packet forwarder", fwdOk ? "running" : "no data", g.forwarder_seen_s_ago == null ? "never seen" : `last seen ${g.forwarder_seen_s_ago}s ago · EUI ${g.gateway_eui || "?"}`, fwdOk ? "good" : "critical"),
       tile("Upstream networks", `${g.upstreams.filter((u) => u.alive).length} / ${g.upstreams.length}`, g.upstreams.map((u) => u.name).join(", ") || "none configured", g.upstreams.length ? (upOk ? "good" : "critical") : "unknown"),
-      tile("Meshtastic node", m.enabled ? (m.connected ? "connected" : "offline") : "disabled", m.my_node?.long_name ? `${m.my_node.long_name} · ${m.my_node.role || ""}` : m.target, !m.enabled ? "unknown" : m.connected ? "good" : "critical"),
+      meshTile,
       tile("GPS fix", gps.enabled ? gps.fix : "disabled", gps.sats_used != null ? `${gps.sats_used} sats used · ${gps.sats_seen} seen` : (gps.connected ? "waiting for TPV" : "gpsd not connected"), !gps.enabled ? "unknown" : gps.fix === "3D" ? "good" : gps.fix === "2D" ? "warning" : "critical"),
       tile("Time sync", gps.time_sync?.source || "–", gps.time_sync?.offset_s != null ? `offset ${(gps.time_sync.offset_s * 1000).toFixed(1)} ms · stratum ${gps.time_sync.stratum}` : "chrony not reporting", gps.time_sync?.ref_id === "GPS" ? "good" : gps.time_sync?.source ? "warning" : "unknown"),
       tile("Stored packets", `${(status.db.lorawan || 0) + (status.db.mesh || 0)}`, `${status.db.lorawan || 0} LoRaWAN · ${status.db.mesh || 0} mesh · ${status.db.nodes || 0} nodes`),
       tile("CPU temperature", status.cpu_temp_c == null ? "–" : `${n1(status.cpu_temp_c, 1)} °C`, `up ${ago(Date.now() / 1000 - status.uptime_s)}`.replace(" ago", ""), status.cpu_temp_c == null ? "unknown" : status.cpu_temp_c > 75 ? "critical" : status.cpu_temp_c > 65 ? "warning" : "good"),
     );
+    if (sx) tiles.append(tile("Mesh airtime (1 h)", `${n1(sx.duty_used_pct_1h, 2)} %`, `of ${sx.duty_limit_pct} % duty cycle · relayed ${sx.counters.relayed} · sent ${sx.counters.tx}`, sx.duty_used_pct_1h > sx.duty_limit_pct * 0.8 ? "warning" : "good"));
+    if (tg && tg.enabled) tiles.append(tile("Telegram", tg.connected ? `@${tg.bot || "bot"}` : "offline", `in ${tg.counters.in} · out ${tg.counters.out} · posted ${tg.counters.posted}`, tg.connected ? "good" : "critical"));
   }
 
   async function refreshOverview() {
@@ -234,7 +239,7 @@
     $("#lw-range").textContent = `last ${h} h · ${lw.totals.total || 0} total`;
     $("#mesh-range").textContent = `last ${h} h · ${mesh.totals.total || 0} total`;
     stackedBars($("#chart-lw-time"), pivot(lw.per_bucket, lw.bucket_s, h, "direction", ["up", "down"]), ["up", "down"], ["uplinks", "downlinks"]);
-    stackedBars($("#chart-mesh-time"), fill(mesh.per_bucket.map((b) => ({ t: b.t, direct: b.n - (b.relayed || 0), relayed: b.relayed || 0 })), mesh.bucket_s, h, ["direct", "relayed"]), ["direct", "relayed"], ["heard directly", "relayed to us"]);
+    stackedBars($("#chart-mesh-time"), fill(mesh.per_bucket.map((b) => ({ t: b.t, heard: b.n - (b.tx || 0), relayed: b.relayed_by_us || 0, tx: b.tx || 0 })), mesh.bucket_s, h, ["heard", "relayed", "tx"]), ["heard", "relayed", "tx"], ["heard", "relayed by us", "sent by us"]);
     table($("#ov-lw"), LW_COLS.slice(0, 11), lwp);
     table($("#ov-mesh"), MESH_COLS.slice(0, 9).concat(MESH_COLS.slice(-1)), mp);
   }
@@ -280,8 +285,10 @@
     const [s, nodes, msgs] = await Promise.all([api(`/api/mesh/summary?hours=${h}`), api("/api/mesh/nodes"), api("/api/mesh/packets?limit=30&text_only=true")]);
     nodeMap = Object.fromEntries(nodes.map((n) => [n.num, n]));
     const t = s.totals, tiles = $("#mesh-tiles"); tiles.innerHTML = "";
-    tiles.append(tile("Packets", `${t.total || 0}`, `last ${h} h`), tile("Relayed to us", `${t.relayed || 0}`, t.total ? `${(100 * (t.relayed || 0) / t.total).toFixed(0)} % multi-hop` : ""),
-      tile("Heard directly", `${t.direct || 0}`, "0 hops"), tile("Text messages", `${t.text || 0}`, ""),
+    tiles.append(tile("Packets heard", `${t.total || 0}`, `last ${h} h · ${t.undecodable || 0} undecodable`),
+      tile("Relayed by us", `${t.relayed_by_us || 0}`, t.total ? `${(100 * (t.relayed_by_us || 0) / t.total).toFixed(0)} % of heard` : ""),
+      tile("Sent by us", `${t.tx || 0}`, `airtime ${n1(t.airtime_s, 0)} s`),
+      tile("Multi-hop", `${t.relayed || 0}`, `${t.direct || 0} heard directly`), tile("Text messages", `${t.text || 0}`, ""),
       tile("Active nodes", `${t.nodes || 0}`, `${nodes.length} known`), tile("Mean SNR", t.snr == null ? "–" : `${n1(t.snr, 1)} dB`, `RSSI ${n1(t.rssi, 0)} dBm`));
     hBars($("#chart-mesh-port"), s.by_port.map((r) => ({ label: (r.portnum || "unknown").replace("_APP", ""), value: r.n })), { color: 2 });
     hBars($("#chart-mesh-hops"), s.by_hops.map((r) => ({ label: `${r.hops_used} hop${r.hops_used === 1 ? "" : "s"}`, value: r.n })), { color: 3 });

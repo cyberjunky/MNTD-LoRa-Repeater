@@ -1,0 +1,94 @@
+diff --git a/libloragw/src/loragw_hal.c b/libloragw/src/loragw_hal.c
+index ffc8ec0..22099c9 100644
+--- a/libloragw/src/loragw_hal.c
++++ b/libloragw/src/loragw_hal.c
+@@ -205,6 +205,7 @@ FILE * log_file = NULL;
+ /* I2C temperature sensor handles */
+ static int     ts_fd = -1;
+ static uint8_t ts_addr = 0xFF;
++static bool ts_fake = false; /* lorarepeater: no STTS751 on the MNTD/RAK HAT */
+ 
+ /* I2C AD5338 handles */
+ static int     ad_fd = -1;
+@@ -1113,8 +1114,7 @@ int lgw_start(void) {
+             }
+         }
+         if (i == sizeof I2C_PORT_TEMP_SENSOR) {
+-            printf("ERROR: no temperature sensor found.\n");
+-            return LGW_HAL_ERROR;
++            printf("WARNING: no temperature sensor found, reporting 25 C [lorarepeater]\n"); ts_fake = true;
+         }
+ 
+         /* Configure ADC AD338R for full duplex (CN490 reference design) */
+@@ -1589,6 +1589,7 @@ int lgw_get_eui(uint64_t* eui) {
+ /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
+ 
+ int lgw_get_temperature(float* temperature) {
++    if (ts_fake) { *temperature = 25.0f; return LGW_HAL_SUCCESS; } /* lorarepeater */
+     int err = LGW_HAL_ERROR;
+ 
+     DEBUG_PRINTF(" --- %s\n", "IN");
+diff --git a/libloragw/src/loragw_sx1302.c b/libloragw/src/loragw_sx1302.c
+index aa330cd..1ee6642 100644
+--- a/libloragw/src/loragw_sx1302.c
++++ b/libloragw/src/loragw_sx1302.c
+@@ -121,6 +121,29 @@ const uint8_t ifmod_config[LGW_IF_CHAIN_NB] = LGW_IFMODEM_CONFIG;
+ /* Radio calibration firmware */
+ #include "cal_fw.var" /* text_cal_sx1257_16_Nov_1 */
+ 
++/* ---- lorarepeater: custom sync word for the LoRa service modem / service-bandwidth TX ---- */
++#include <stdlib.h>
++static int lorarepeater_syncword_peaks(uint8_t *p1, uint8_t *p2) {
++    const char *s = getenv("LGW_SERVICE_SYNCWORD");
++    unsigned long v;
++    if (s == NULL || *s == '\0') return 0;
++    v = strtoul(s, NULL, 0);
++    if (v == 0 || v > 0xFF) return 0;
++    *p1 = (uint8_t)(((v >> 4) & 0x0F) << 1);
++    *p2 = (uint8_t)((v & 0x0F) << 1);
++    return 1;
++}
++static int lorarepeater_tx_uses_service_syncword(uint8_t bandwidth) {
++    const char *s = getenv("LGW_SERVICE_SYNCWORD_TX_BW");
++    unsigned long khz = (s != NULL && *s != '\0') ? strtoul(s, NULL, 0) : 250;
++    uint8_t bw;
++    if (khz == 0) return 0;
++    bw = (khz == 125) ? BW_125KHZ : (khz == 250) ? BW_250KHZ : (khz == 500) ? BW_500KHZ : 0xFF;
++    return (bw != 0xFF && bandwidth == bw) ? 1 : 0;
++}
++/* ---- end lorarepeater ---- */
++
++
+ /* Buffer to hold RX data */
+ rx_buffer_t rx_buffer;
+ 
+@@ -1128,7 +1151,12 @@ int sx1302_lora_syncword(bool public, uint8_t lora_service_sf) {
+     }
+ 
+     /* LoRa Service modem configuration */
+-    if ((public == false) || (lora_service_sf == DR_LORA_SF5) || (lora_service_sf == DR_LORA_SF6)) {
++    uint8_t lr_p1, lr_p2; /* lorarepeater */
++    if (lorarepeater_syncword_peaks(&lr_p1, &lr_p2)) {
++        printf("INFO: configuring LoRa (Service) SF%u with custom syncword, peaks %u/%u [lorarepeater]\n", lora_service_sf, lr_p1, lr_p2);
++        err |= lgw_reg_w(SX1302_REG_RX_TOP_LORA_SERVICE_FSK_FRAME_SYNCH0_PEAK1_POS, lr_p1);
++        err |= lgw_reg_w(SX1302_REG_RX_TOP_LORA_SERVICE_FSK_FRAME_SYNCH1_PEAK2_POS, lr_p2);
++    } else if ((public == false) || (lora_service_sf == DR_LORA_SF5) || (lora_service_sf == DR_LORA_SF6)) {
+         DEBUG_PRINTF("INFO: configuring LoRa (Service) SF%u with syncword PRIVATE (0x12)\n", lora_service_sf);
+         err |= lgw_reg_w(SX1302_REG_RX_TOP_LORA_SERVICE_FSK_FRAME_SYNCH0_PEAK1_POS, 2);
+         err |= lgw_reg_w(SX1302_REG_RX_TOP_LORA_SERVICE_FSK_FRAME_SYNCH1_PEAK2_POS, 4);
+@@ -2596,7 +2624,14 @@ int sx1302_send(lgw_radio_type_t radio_type, struct lgw_tx_gain_lut_s * tx_lut,
+             CHECK_ERR(err);
+ 
+             /* Syncword */
+-            if ((lwan_public == false) || (pkt_data->datarate == DR_LORA_SF5) || (pkt_data->datarate == DR_LORA_SF6)) {
++            uint8_t lr_p1, lr_p2; /* lorarepeater */
++            if (lorarepeater_syncword_peaks(&lr_p1, &lr_p2) && lorarepeater_tx_uses_service_syncword(pkt_data->bandwidth)) {
++                DEBUG_MSG("Setting custom LoRa syncword [lorarepeater]\n");
++                err = lgw_reg_w(SX1302_REG_TX_TOP_FRAME_SYNCH_0_PEAK1_POS(pkt_data->rf_chain), lr_p1);
++                CHECK_ERR(err);
++                err = lgw_reg_w(SX1302_REG_TX_TOP_FRAME_SYNCH_1_PEAK2_POS(pkt_data->rf_chain), lr_p2);
++                CHECK_ERR(err);
++            } else if ((lwan_public == false) || (pkt_data->datarate == DR_LORA_SF5) || (pkt_data->datarate == DR_LORA_SF6)) {
+                 DEBUG_MSG("Setting LoRa syncword 0x12\n");
+                 err = lgw_reg_w(SX1302_REG_TX_TOP_FRAME_SYNCH_0_PEAK1_POS(pkt_data->rf_chain), 2);
+                 CHECK_ERR(err);

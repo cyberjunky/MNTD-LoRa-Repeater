@@ -33,7 +33,10 @@ def _read_cpu_temp(path: str) -> float | None:
         return None
 
 
-def create_app(cfg: Config, db: Database, mux: GwmpMux, mesh: MeshIngest, gps: GpsMonitor) -> FastAPI:
+def create_app(cfg: Config, db: Database, mux: GwmpMux, mesh: MeshIngest, gps: GpsMonitor,
+               extras: dict[str, Any] | None = None) -> FastAPI:
+    """`extras` maps a name to an optional object with a status() method (meshsx, telegram)."""
+    extras = extras or {}
     started = time.time()
     sockets: set[WebSocket] = set()
     loop_holder: dict[str, asyncio.AbstractEventLoop] = {}
@@ -94,6 +97,7 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, mesh: MeshIngest, gps: G
             "gwmp": mux.status(),
             "mesh": mesh.status(),
             "gps": gps.status(),
+            **{name: (obj.status() if obj is not None else None) for name, obj in extras.items()},
         }
 
     @app.get("/api/gps/history")
@@ -191,7 +195,8 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, mesh: MeshIngest, gps: G
         bucket = 3600 if hours > 48 else 900
         per_bucket = await db.fetch(
             "SELECT CAST(ts / ? AS INTEGER) * ? AS t, COUNT(*) AS n, "
-            "SUM(CASE WHEN hops_used > 0 THEN 1 ELSE 0 END) AS relayed, SUM(via_mqtt) AS via_mqtt "
+            "SUM(CASE WHEN hops_used > 0 THEN 1 ELSE 0 END) AS relayed, SUM(via_mqtt) AS via_mqtt, "
+            "SUM(relayed_by_us) AS relayed_by_us, SUM(direction = 'tx') AS tx "
             "FROM mesh_packets WHERE ts >= ? GROUP BY t ORDER BY t", (bucket, bucket, since))
         by_port = await db.fetch(
             "SELECT portnum, COUNT(*) AS n FROM mesh_packets WHERE ts >= ? GROUP BY portnum ORDER BY n DESC", (since,))
@@ -204,7 +209,9 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, mesh: MeshIngest, gps: G
         totals = await db.fetchone(
             "SELECT COUNT(*) AS total, SUM(CASE WHEN hops_used > 0 THEN 1 ELSE 0 END) AS relayed, "
             "SUM(CASE WHEN hops_used = 0 THEN 1 ELSE 0 END) AS direct, SUM(via_mqtt) AS via_mqtt, "
-            "SUM(text IS NOT NULL) AS text, AVG(rssi) AS rssi, AVG(snr) AS snr, COUNT(DISTINCT from_node) AS nodes "
+            "SUM(text IS NOT NULL) AS text, AVG(rssi) AS rssi, AVG(snr) AS snr, COUNT(DISTINCT from_node) AS nodes, "
+            "SUM(relayed_by_us) AS relayed_by_us, SUM(direction = 'tx') AS tx, SUM(encrypted) AS undecodable, "
+            "SUM(airtime_ms) / 1000.0 AS airtime_s "
             "FROM mesh_packets WHERE ts >= ?", (since,))
         return {"hours": hours, "bucket_s": bucket, "totals": totals, "per_bucket": per_bucket,
                 "by_port": by_port, "by_hops": by_hops, "top_nodes": top_nodes}

@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -29,6 +30,8 @@ from .db import Database
 from .lorawan import decode_phy
 
 log = logging.getLogger(__name__)
+
+RxHook = Callable[[dict[str, Any]], bool]   # returns True to claim an rxpk (not LoRaWAN)
 
 PUSH_DATA, PUSH_ACK, PULL_DATA, PULL_RESP, PULL_ACK, TX_ACK = range(6)
 NAMES = {PUSH_DATA: "PUSH_DATA", PUSH_ACK: "PUSH_ACK", PULL_DATA: "PULL_DATA",
@@ -94,6 +97,11 @@ class GwmpMux:
         self.last_forwarder_seen = 0.0
         self._tasks: list[asyncio.Task] = []
         self._recent_tx: dict[int, str] = {}   # tmst -> upstream that won the downlink slot
+        self.rx_hooks: list[RxHook] = []       # e.g. the Meshtastic engine claiming its channel
+        self._local_tokens: dict[int, float] = {}   # tokens of txpk we originated ourselves
+
+    def add_rx_hook(self, fn: RxHook) -> None:
+        self.rx_hooks.append(fn)
 
     # -- lifecycle --------------------------------------------------------------------
 
@@ -139,14 +147,25 @@ class GwmpMux:
                 self.gateway_eui = eui
             self.fwd_transport.sendto(bytes([2, token[0], token[1], PUSH_ACK]), addr)  # type: ignore[union-attr]
             self.counters["push"] += 1
-            await self._handle_push(eui, data[12:])
-            await self._fanout(data)
+            forward = await self._handle_push(eui, data[12:])
+            if forward is not None:
+                await self._fanout(data, forward)
         elif ident == PULL_DATA and len(data) >= 12:
             self.pull_addr = addr
             self.counters["pull"] += 1
             self.fwd_transport.sendto(bytes([2, token[0], token[1], PULL_ACK]), addr)  # type: ignore[union-attr]
         elif ident == TX_ACK:
             tok = int.from_bytes(token, "big")
+            if tok in self._local_tokens:
+                self._local_tokens.pop(tok, None)
+                try:
+                    err = json.loads(data[12:] or b"{}").get("txpk_ack", {}).get("error")
+                except Exception:
+                    err = None
+                if err and err != "NONE":
+                    self.counters["tx_errors"] = self.counters.get("tx_errors", 0) + 1
+                    await self.db.add_event("mesh", "warn", f"own transmission rejected by forwarder: {err}")
+                return
             for up in self.upstreams:
                 if tok in up.downlink_tokens and up.transport:
                     up.downlink_tokens.pop(tok, None)
@@ -159,14 +178,21 @@ class GwmpMux:
             if err and err != "NONE":
                 await self.db.add_event("gwmp", "warn", f"TX_ACK error: {err}")
 
-    async def _handle_push(self, eui: bytes, payload: bytes) -> None:
+    async def _handle_push(self, eui: bytes, payload: bytes) -> dict[str, Any] | None:
+        """Log the forwarder's message. Returns the message to fan out to upstreams (with
+        rxpk entries claimed by hooks removed), or None if nothing is left to forward."""
         try:
             msg = json.loads(payload)
         except json.JSONDecodeError:
             log.warning("bad PUSH_DATA json")
-            return
+            return None
+        kept: list[dict[str, Any]] = []
         for rx in msg.get("rxpk", []):
             self.counters["rxpk"] += 1
+            if any(hook(rx) for hook in self.rx_hooks):
+                self.counters["claimed"] = self.counters.get("claimed", 0) + 1
+                continue
+            kept.append(rx)
             row: dict[str, Any] = {
                 "direction": "up",
                 "gateway_eui": eui.hex().upper(),
@@ -194,11 +220,18 @@ class GwmpMux:
                 "rxnb": st.get("rxnb"), "rxok": st.get("rxok"), "rxfw": st.get("rxfw"), "ackr": st.get("ackr"),
                 "dwnb": st.get("dwnb"), "txnb": st.get("txnb"), "temp": st.get("temp"),
             })
+        if "rxpk" in msg:
+            if kept:
+                msg["rxpk"] = kept
+            else:
+                del msg["rxpk"]
+        return msg if msg else None
 
-    async def _fanout(self, data: bytes) -> None:
+    async def _fanout(self, data: bytes, msg: dict[str, Any]) -> None:
         # Rewrite EUI if configured, keep the forwarder's token (upstream ACKs are per upstream socket)
-        if self.cfg.gateway_eui:
-            data = data[:4] + self.gateway_eui + data[12:]
+        eui = self.gateway_eui if self.cfg.gateway_eui else data[4:12]
+        if self.rx_hooks or self.cfg.gateway_eui:
+            data = data[:4] + eui + json.dumps(msg, separators=(",", ":")).encode()
         for up in self.upstreams:
             if up.transport:
                 tok = int.from_bytes(data[1:3], "big")
@@ -283,6 +316,23 @@ class GwmpMux:
         self.fwd_transport.sendto(bytes([2, token[0], token[1], PULL_RESP]) + payload, self.pull_addr)
         row["forwarded"] = ["radio"]
         await self.db.add_lorawan_packet(row)
+
+    # -- own transmissions (Meshtastic engine) ----------------------------------------
+
+    async def send_txpk(self, txpk: dict[str, Any]) -> bool:
+        """Hand a txpk to the packet forwarder as if we were a network server. Returns False
+        when the forwarder has not opened its downlink channel (no PULL_DATA seen yet)."""
+        if not self.pull_addr or not self.fwd_transport:
+            return False
+        tok = os.urandom(2)
+        self._local_tokens[int.from_bytes(tok, "big")] = time.time()
+        if len(self._local_tokens) > 256:
+            cutoff = time.time() - 120
+            self._local_tokens = {t: v for t, v in self._local_tokens.items() if v > cutoff}
+        payload = json.dumps({"txpk": txpk}, separators=(",", ":")).encode()
+        self.fwd_transport.sendto(bytes([2, tok[0], tok[1], PULL_RESP]) + payload, self.pull_addr)
+        self.counters["own_tx"] = self.counters.get("own_tx", 0) + 1
+        return True
 
     # -- status ----------------------------------------------------------------------
 

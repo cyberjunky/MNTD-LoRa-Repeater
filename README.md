@@ -13,8 +13,12 @@ install script replaces it.
 - **LoRaWAN gateway** on the RAK2287 with the original RAK calibration, forwarding to **any
   number of network servers at once** (ChirpStack, The Things Network, Helium, ...) through a
   Python Semtech-UDP multiplexer that logs every uplink and downlink.
-- **Meshtastic repeater** (`meshtasticd`, role ROUTER_LATE) on an added SX1262 radio, with
-  every packet, hop count, relay node, RSSI/SNR and the node database recorded.
+- **Meshtastic repeater on the same radio and antenna**: a patched SX1302 HAL puts the
+  concentrator's service channel on EU_868 LongFast with the Meshtastic sync word, and a Python
+  node (ROUTER_LATE) decrypts, logs, relays, ACKs and sends. Every packet, hop count, relay
+  node, RSSI/SNR, airtime and the node database are recorded. A second SX1262 radio with
+  `meshtasticd` is supported as an alternative.
+- **Telegram bridge**: mesh texts into a chat or channel, `/send` and `/dm` back to the mesh.
 - **GPS**: position, fix quality and satellites in the GUI; the receiver also disciplines
   `chrony`, so the box is an NTP server for your LAN and the concentrator gets GPS timestamps.
 - **Web GUI** (no internet needed): live packet feeds, per-channel and per-data-rate charts,
@@ -28,7 +32,7 @@ install script replaces it.
 # on a fresh Raspberry Pi OS Lite 64-bit
 git clone https://github.com/<you>/MNTD-Lora-Repeater.git
 cd MNTD-Lora-Repeater
-sudo MESH=meshstick install/install.sh     # MESH=none for LoRaWAN only
+sudo install/install.sh                    # MESH=meshstick for a USB SX1262, MESH=none for LoRaWAN only
 sudo reboot
 ```
 
@@ -42,7 +46,7 @@ Then open `http://<hostname>:8080/` and add your LoRaWAN network servers to
 | `backend/` | Python package `lorarepeater` (FastAPI, asyncio UDP mux, Meshtastic client, gpsd/chrony monitor, I2C GPS bridge) and tests |
 | `web/` | The dashboard (static HTML/CSS/JS) |
 | `install/` | `install.sh`, systemd units, sx1302_hal patch, reset script, LP5562 overlay, chrony/gpsd/meshtasticd templates |
-| `docs/` | [hardware](docs/hardware.md), [firmware analysis](docs/firmware-analysis.md), [architecture](docs/architecture.md), [install](docs/install.md), [research](docs/research/) |
+| `docs/` | [hardware](docs/hardware.md), [firmware analysis](docs/firmware-analysis.md), [architecture](docs/architecture.md), [Meshtastic on the SX1302](docs/meshtastic-on-sx1302.md), [install](docs/install.md), [research](docs/research/) |
 | `tools/` | `extract_initramfs.py` to unpack the stock firmware image |
 | `photos/` | The hardware |
 
@@ -67,8 +71,11 @@ Without hardware the service still runs: point any Semtech UDP packet forwarder 
 ## Status
 
 Built from the firmware analysis and documentation; **not yet run on the real hardware**.
-The first on-device test should verify: reset pin (installer probes 25 then 17), GPS over
-I2C, the LP5562 overlay, and the sx1302_hal temperature-sensor patch against V2.1.0.
+The HAL patch applies cleanly to V2.1.0 and compiles; the Meshtastic engine is covered by
+tests against a simulated forwarder. The first on-device test should verify: reset pin
+(installer probes 25 then 17), GPS over I2C, the LP5562 overlay, Meshtastic receive and then
+relay on the service channel (bench procedure in
+[docs/meshtastic-on-sx1302.md](docs/meshtastic-on-sx1302.md)).
 
 ## License
 

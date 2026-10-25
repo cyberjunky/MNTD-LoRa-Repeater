@@ -88,7 +88,11 @@ CREATE TABLE IF NOT EXISTS mesh_packets (
     priority    TEXT,
     encrypted   INTEGER,                  -- 1 if we could not decode the payload
     text        TEXT,                     -- TEXT_MESSAGE_APP body if any
-    payload     TEXT                      -- JSON of the decoded payload (position, telemetry, ...)
+    payload     TEXT,                     -- JSON of the decoded payload (position, telemetry, ...)
+    direction   TEXT DEFAULT 'rx',        -- 'rx' heard on air, 'tx' originated by us
+    source      TEXT,                     -- 'sx1302' (our own node) or 'meshtasticd'
+    relayed_by_us INTEGER DEFAULT 0,      -- 1 if we rebroadcast this frame
+    airtime_ms  REAL
 );
 CREATE INDEX IF NOT EXISTS ix_mesh_ts ON mesh_packets(ts);
 CREATE INDEX IF NOT EXISTS ix_mesh_from ON mesh_packets(from_node);

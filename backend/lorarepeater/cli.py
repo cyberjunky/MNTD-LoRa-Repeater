@@ -17,6 +17,8 @@ from .db import Database
 from .gps import GpsMonitor
 from .gwmp import GwmpMux
 from .mesh import MeshIngest
+from .meshsx import MeshSxEngine
+from .telegram import TelegramBridge
 
 
 async def _serve(cfg: Config) -> None:
@@ -25,11 +27,16 @@ async def _serve(cfg: Config) -> None:
     mux = GwmpMux(cfg.gwmp, db)
     mesh = MeshIngest(cfg.mesh, db)
     gps = GpsMonitor(cfg.gps, db)
+    meshsx = MeshSxEngine(cfg.meshsx, db, mux, gps) if cfg.meshsx.enabled else None
+    telegram = TelegramBridge(cfg.telegram, db, meshsx=meshsx, mesh=mesh if cfg.mesh.enabled else None)
     if cfg.hardware.led_enabled:
         led.set_colour("blue")
     await mux.start()
     await mesh.start()
     await gps.start()
+    if meshsx:
+        await meshsx.start()
+    await telegram.start()
     await db.add_event("system", "info", f"lorarepeater {__version__} started")
 
     async def housekeeping_loop() -> None:
@@ -40,13 +47,14 @@ async def _serve(cfg: Config) -> None:
                 st = mux.status()
                 fwd_ok = st["forwarder_seen_s_ago"] is not None and st["forwarder_seen_s_ago"] < 120
                 up_ok = not st["upstreams"] or any(u["alive"] for u in st["upstreams"])
-                led.set_colour(led.health_colour(fwd_ok, up_ok, mesh.connected, cfg.mesh.enabled))
+                mesh_ok = mesh.connected if cfg.mesh.enabled else True
+                led.set_colour(led.health_colour(fwd_ok, up_ok, mesh_ok, cfg.mesh.enabled))
             if asyncio.get_running_loop().time() - last_prune > 6 * 3600:
                 await db.prune(cfg.retention_days)
                 last_prune = asyncio.get_running_loop().time()
 
     prune_task = asyncio.create_task(housekeeping_loop())
-    app = create_app(cfg, db, mux, mesh, gps)
+    app = create_app(cfg, db, mux, mesh, gps, extras={"meshsx": meshsx, "telegram": telegram})
     server = uvicorn.Server(uvicorn.Config(app, host=cfg.web.host, port=cfg.web.port, log_level="info", loop="asyncio"))
 
     loop = asyncio.get_running_loop()
@@ -59,6 +67,9 @@ async def _serve(cfg: Config) -> None:
         await server.serve()
     finally:
         prune_task.cancel()
+        await telegram.stop()
+        if meshsx:
+            await meshsx.stop()
         await gps.stop()
         await mesh.stop()
         await mux.stop()

@@ -80,6 +80,8 @@ def packet_to_row(pkt: dict[str, Any]) -> dict[str, Any]:
         "encrypted": 1 if ("encrypted" in pkt and not dec) else 0,
         "text": text,
         "payload": payload or None,
+        "direction": "rx",
+        "source": "meshtasticd",
     }
 
 
@@ -123,6 +125,11 @@ class MeshIngest:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._task: asyncio.Task | None = None
+        self.listeners: list[Any] = []
+
+    def add_text_listener(self, fn: Any) -> None:
+        """fn(info) is called (from the library thread) for every received text message."""
+        self.listeners.append(fn)
 
     async def start(self) -> None:
         if not self.cfg.enabled:
@@ -212,6 +219,15 @@ class MeshIngest:
         row = packet_to_row(packet)
         if row["portnum"] == "TEXT_MESSAGE_APP":
             self.counters["text"] += 1
+            if row["text"]:
+                info = {"from": row["from_node"], "to": row["to_node"], "channel": row["channel"],
+                        "channel_name": None, "text": row["text"], "rssi": row["rssi"], "snr": row["snr"],
+                        "hops": row["hops_used"], "packet_id": row["packet_id"]}
+                for fn in self.listeners:
+                    try:
+                        fn(info)
+                    except Exception as e:
+                        log.warning("text listener failed: %s", e)
         self._post(self.db.add_mesh_packet(row))
         # NODEINFO / POSITION / TELEMETRY update the node table through the library's node db
         if row["portnum"] in ("NODEINFO_APP", "POSITION_APP", "TELEMETRY_APP") and interface is not None:

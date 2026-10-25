@@ -22,8 +22,39 @@ gwmp:
   #    host: 127.0.0.1      # helium gateway-rs listening on 1680
   #    port: 1680
 
+# Meshtastic on the RAK2287 itself (patched sx1302_hal, service channel at 869.525 MHz).
+# This is the default: one radio, one antenna. The box is a real Meshtastic node.
+meshsx:
+  enabled: true  # meshsx
+  freq_mhz: 869.525
+  datr: SF11BW250         # EU_868 LongFast
+  codr: 4/5
+  tx_enabled: true
+  tx_power_dbm: 14
+  node_num: null          # null = derived from the Pi serial number
+  long_name: MNTD Repeater
+  short_name: MNTD
+  role: ROUTER_LATE       # ROUTER_LATE indoors, ROUTER on an elevated site, CLIENT_MUTE = listen only
+  hop_limit: 3
+  duty_cycle_pct: 10      # EU 869.4-869.65 MHz band
+  nodeinfo_interval_s: 3600
+  position_broadcast: false   # true = announce the GPS position (coarsened to precision_bits)
+  position_precision_bits: 16
+  channels:
+    - name: LongFast
+      psk: "AQ=="           # default key; put your own base64 key here for a private channel
+
+# Telegram bot: mesh texts into a chat, /send and /dm out. Create a bot with @BotFather.
+telegram:
+  enabled: false
+  token: ""
+  allowed_chat_ids: []      # the bot tells you the id of any chat that talks to it (see events)
+  notify_chat_id: null      # chat or channel id that receives every mesh text
+  notify_all_text: true
+
+# Alternative Meshtastic backend: meshtasticd with its own SX1262 radio (USB MeshStick or SPI1).
 mesh:
-  enabled: true  # mesh
+  enabled: false  # mesh
   transport: tcp          # tcp = meshtasticd on this box, serial = USB node
   host: 127.0.0.1
   port: 4403

@@ -52,11 +52,15 @@ Environment variables for the script:
 |---|---|---|
 | `RESET_PIN` | `auto` | `25`, `17` or `auto` (EEPROM present → 25, then verified) |
 | `GPS_MODE` | `auto` | `i2c`, `uart`, `off` |
-| `MESH` | `none` | `meshstick` (USB SX1262 driven by meshtasticd), `serial` (standalone USB node, backend reads the serial port), `none` |
+| `MESH` | `sx1302` | `sx1302` (Meshtastic on the RAK2287 service channel, one antenna), `meshstick` (USB SX1262 driven by meshtasticd), `serial` (standalone USB node, backend reads the serial port), `none` |
 | `MESH_ROLE` | `ROUTER_LATE` | Meshtastic device role |
 | `HAL_TAG` | `V2.1.0` | sx1302_hal git tag |
 
-Example with a MeshStick: `sudo MESH=meshstick install/install.sh`.
+Example with a MeshStick instead of the on-concentrator node: `sudo MESH=meshstick install/install.sh`.
+
+After installing, set the node name, role, channel key and (optionally) the Telegram bot in
+`/etc/lorarepeater/config.yaml` (`meshsx:` and `telegram:` sections), then
+`sudo systemctl restart lorarepeater`.
 
 ## 3. Configure the LoRaWAN networks
 

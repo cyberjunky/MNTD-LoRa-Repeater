@@ -43,6 +43,45 @@ class MeshConfig(BaseModel):
     reconnect_s: float = 15.0
 
 
+class MeshChannelConfig(BaseModel):
+    name: str = "LongFast"
+    psk: str = "AQ=="  # base64. "AQ==" = Meshtastic default key #1, "" = unencrypted, 16/32 bytes = own key
+
+
+class MeshSxConfig(BaseModel):
+    """Meshtastic node on the SX1302's service channel (needs the patched sx1302_hal)."""
+
+    enabled: bool = False
+    freq_mhz: float = 869.525       # EU_868 LongFast slot
+    datr: str = "SF11BW250"
+    codr: str = "4/5"
+    tx_enabled: bool = True
+    tx_power_dbm: int = 14
+    node_num: int | None = None     # None = derived from the Pi serial number
+    long_name: str = "MNTD Repeater"
+    short_name: str = "MNTD"
+    role: str = "ROUTER_LATE"       # ROUTER_LATE (indoor), ROUTER (elevated site), CLIENT_MUTE (listen only)
+    hop_limit: int = 3
+    relay_delay_ms: float = 200.0   # added to the firmware-like contention window
+    relay_legacy: bool = True       # also relay frames without hop_start (very old firmware)
+    duty_cycle_pct: float = 10.0    # EU 869.4-869.65 MHz band limit
+    nodeinfo_interval_s: float = 3600.0
+    position_broadcast: bool = False
+    position_precision_bits: int = 16   # 32 = exact, 16 = about 1.5 km, as in the Meshtastic app
+    channels: list[MeshChannelConfig] = Field(default_factory=lambda: [MeshChannelConfig()])
+
+
+class TelegramConfig(BaseModel):
+    """Telegram bot: receive mesh texts in a chat/channel, send with /send and /dm."""
+
+    enabled: bool = False
+    token: str = ""
+    allowed_chat_ids: list[int] = Field(default_factory=list)   # chats that may send to the mesh
+    notify_chat_id: int | None = None                           # where received texts are posted
+    notify_all_text: bool = True                                # also texts not addressed to us
+    poll_timeout_s: int = 30
+
+
 class GpsConfig(BaseModel):
     """GPS fix from gpsd and time-sync state from chrony."""
 
@@ -73,6 +112,8 @@ class Config(BaseModel):
     retention_days: int = 90
     gwmp: GwmpConfig = Field(default_factory=GwmpConfig)
     mesh: MeshConfig = Field(default_factory=MeshConfig)
+    meshsx: MeshSxConfig = Field(default_factory=MeshSxConfig)
+    telegram: TelegramConfig = Field(default_factory=TelegramConfig)
     gps: GpsConfig = Field(default_factory=GpsConfig)
     web: WebConfig = Field(default_factory=WebConfig)
     hardware: HardwareConfig = Field(default_factory=HardwareConfig)

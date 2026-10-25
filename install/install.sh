@@ -8,8 +8,12 @@
 # Idempotent: safe to re-run. Environment overrides:
 #     RESET_PIN=25|17|auto   SX1302 reset GPIO (default auto: probe 25 then 17)
 #     GPS_MODE=i2c|uart|off  how the RAK2287 GPS is reached (default auto-detect)
-#     MESH=meshstick|serial|none   Meshtastic radio (default none)
-#     MESH_ROLE=ROUTER_LATE  Meshtastic device role
+#     MESH=sx1302|meshstick|serial|none
+#                            sx1302   = Meshtastic on the RAK2287 service channel (default,
+#                                       patched HAL, one antenna)
+#                            meshstick= meshtasticd with a USB SX1262
+#                            serial   = standalone Meshtastic node on USB serial
+#     MESH_ROLE=ROUTER_LATE  Meshtastic device role (meshtasticd modes)
 #     SKIP_MESH_INSTALL=1    do not add the meshtasticd apt repo
 set -euo pipefail
 
@@ -23,7 +27,7 @@ BOOT_CFG=/boot/firmware/config.txt
 [ -f "$BOOT_CFG" ] || BOOT_CFG=/boot/config.txt
 RESET_PIN="${RESET_PIN:-auto}"
 GPS_MODE="${GPS_MODE:-auto}"
-MESH="${MESH:-none}"
+MESH="${MESH:-sx1302}"
 MESH_ROLE="${MESH_ROLE:-ROUTER_LATE}"
 
 log()  { printf '\n\033[1;32m==> %s\033[0m\n' "$*"; }
@@ -108,6 +112,11 @@ if [ -z "$GW_EUI" ]; then
 fi
 echo "Gateway EUI: $GW_EUI"
 echo "SX1302_RESET_PIN=$RESET_PIN" > /etc/default/lora-pkt-fwd
+if [ "$MESH" = sx1302 ]; then
+    # patched HAL: Meshtastic sync word on the service modem and on 250 kHz transmissions
+    echo "LGW_SERVICE_SYNCWORD=0x2B" >> /etc/default/lora-pkt-fwd
+    echo "LGW_SERVICE_SYNCWORD_TX_BW=250" >> /etc/default/lora-pkt-fwd
+fi
 
 # ------------------------------------------------------------------------------------------
 log "6/9 GPS: I2C bridge, gpsd, chrony"
@@ -136,9 +145,9 @@ install -m 644 "$REPO_DIR/install/chrony/lorarepeater.conf" /etc/chrony/conf.d/l
 # ------------------------------------------------------------------------------------------
 log "7/9 packet forwarder configuration"
 python3 - "$REPO_DIR/reference/original-firmware/etc/lorawan/sx1302/global_conf.json.sx1250.EU868" \
-          "$CONF_DIR/global_conf.json" "$GW_EUI" "$GPS_TTY_PKTFWD" <<'PY'
+          "$CONF_DIR/global_conf.json" "$GW_EUI" "$GPS_TTY_PKTFWD" "$MESH" <<'PY'
 import json, re, sys
-src, dst, eui, gps_tty = sys.argv[1:5]
+src, dst, eui, gps_tty, mesh = sys.argv[1:6]
 raw = open(src).read()
 raw = re.sub(r"/\*.*?\*/", "", raw, flags=re.S)
 raw = re.sub(r"//[^\n]*", "", raw)
@@ -148,6 +157,18 @@ sx = c["SX130x_conf"]
 sx.pop("spidev_path", None)
 sx["com_type"] = "SPI"
 sx["com_path"] = "/dev/spidev0.0"
+if mesh == "sx1302":
+    # Meshtastic EU_868 LongFast on the 250 kHz service channel at 869.525 MHz.
+    # The SX1302 accepts |IF| + BW/2 <= 800 kHz per radio, so the eight LoRaWAN channels are
+    # regrouped: radio 0 (867.5 MHz, TX) takes 867.1-868.1, radio 1 (868.9 MHz) takes
+    # 868.3, 868.5 and the service channel at +625 kHz.
+    sx["radio_1"]["freq"] = 868900000
+    plan = [(0, -400000), (0, -200000), (0, 0), (0, 200000), (0, 400000), (0, 600000), (1, -600000), (1, -400000)]
+    for i, (radio, iff) in enumerate(plan):
+        sx[f"chan_multiSF_{i}"] = {"enable": True, "radio": radio, "if": iff}
+    sx["chan_Lora_std"] = {"enable": True, "radio": 1, "if": 625000, "bandwidth": 250000, "spread_factor": 11,
+                           "implicit_hdr": False, "implicit_payload_length": 17, "implicit_crc_en": False,
+                           "implicit_coderate": 1}
 g = c["gateway_conf"]
 g.pop("gps_i2c_path", None)
 g["gateway_ID"] = eui
@@ -191,7 +212,11 @@ if [ "$GPS_MODE" = off ]; then systemctl disable --now gpsd lorarepeater-gps-bri
 
 # ------------------------------------------------------------------------------------------
 log "9/9 Meshtastic ($MESH)"
-if [ "$MESH" != "none" ] && [ "${SKIP_MESH_INSTALL:-0}" != 1 ]; then
+if [ "$MESH" = sx1302 ]; then
+    sed -i 's/^\(\s*\)enabled: false\s*# meshsx/\1enabled: true  # meshsx/; s/^\(\s*\)enabled: true\s*# mesh$/\1enabled: false  # mesh/' "$CONF_DIR/config.yaml"
+    echo "Meshtastic runs on the RAK2287 service channel (869.525 MHz, LongFast); node name/role in $CONF_DIR/config.yaml"
+elif [ "$MESH" != "none" ] && [ "${SKIP_MESH_INSTALL:-0}" != 1 ]; then
+    sed -i 's/^\(\s*\)enabled: true\s*# meshsx/\1enabled: false  # meshsx/; s/^\(\s*\)enabled: false\s*# mesh$/\1enabled: true  # mesh/' "$CONF_DIR/config.yaml"
     . /etc/os-release
     DEB="Debian_${VERSION_ID:-12}"
     curl -fsSL "https://download.opensuse.org/repositories/network:/Meshtastic:/beta/$DEB/Release.key" \
@@ -215,7 +240,7 @@ if [ "$MESH" != "none" ] && [ "${SKIP_MESH_INSTALL:-0}" != 1 ]; then
         sed -i 's/^\(\s*\)transport: tcp/\1transport: serial/' "$CONF_DIR/config.yaml"
     fi
 else
-    sed -i 's/^\(\s*\)enabled: true\s*# mesh/\1enabled: false  # mesh/' "$CONF_DIR/config.yaml" || true
+    sed -i 's/^\(\s*\)enabled: true\s*# meshsx/\1enabled: false  # meshsx/; s/^\(\s*\)enabled: true\s*# mesh$/\1enabled: false  # mesh/' "$CONF_DIR/config.yaml" || true
 fi
 
 log "done"
@@ -226,8 +251,9 @@ cat <<EOF
   GPS            : $GPS_MODE
   Forwarder conf : $CONF_DIR/global_conf.json
   Backend conf   : $CONF_DIR/config.yaml   (add your LoRaWAN network servers under gwmp.upstreams)
+  Meshtastic     : $MESH
   Web GUI        : http://$(hostname -I 2>/dev/null | awk '{print $1}'):8080/
-  Meshtastic web : https://$(hostname -I 2>/dev/null | awk '{print $1}'):9443/   (if MESH != none)
+  Meshtastic web : https://$(hostname -I 2>/dev/null | awk '{print $1}'):9443/   (meshtasticd modes only)
 
 Reboot now so the boot overlays take effect:   sudo reboot
 Then check:  systemctl status lora-pkt-fwd lorarepeater gpsd chrony ; chronyc sources ; gpspipe -w -n 5

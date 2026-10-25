@@ -16,6 +16,9 @@ dependencies = [
     "aiosqlite>=0.20",
     "pyyaml>=6.0",
     "pydantic>=2.7",
+    "cryptography>=42",
+    "httpx>=0.27",
+    "meshtastic>=2.5",
 ]
 
 [project.optional-dependencies]
