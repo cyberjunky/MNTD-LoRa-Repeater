@@ -91,7 +91,7 @@ async def test_refresh_builds_the_snapshot(tmp_path, monkeypatch):
     await h.refresh()
     s = h.status()
     assert s["errors"] == {}
-    assert s["hotspot"]["asset_id"] == ASSET and s["hotspot"]["gain_dbi"] == 4.5 and s["hotspot"]["active"] is False
+    assert s["hotspot"]["asset_id"] == ASSET and s["hotspot"]["gain_dbi"] == 4.5
     hnt, iot = s["rewards"]["tokens"]["HNT"], s["rewards"]["tokens"]["IOT"]
     assert hnt["lifetime"] == 6.0 and hnt["claimed"] == 5.40287958 and round(hnt["unclaimed"], 8) == 0.59712042
     assert iot["unclaimed"] == 0 and iot["claims"][0]["amount"] == 16.0
@@ -133,5 +133,5 @@ async def test_scan_nearby_pages_and_filters(tmp_path):
     await h.scan_nearby(52.0, 5.0)
     near = await h.nearby()
     assert [x["key"] for x in near["hotspots"]] == ["near-active", "near-inactive"]
-    assert near["scan"]["total"] == 4 and near["scan"]["active"] == 1 and near["scan"]["radius_km"] == NEARBY_KM
+    assert near["scan"]["total"] == 4 and near["scan"]["radius_km"] == NEARBY_KM
     await db.close()

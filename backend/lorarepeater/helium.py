@@ -3,7 +3,8 @@
 Sources, all public and read-only:
 
 * gateway-rs local API (`helium_gateway info`): key, animal name, region, packet-router session;
-* Helium entity service: the hotspot NFT (asset id, asserted location, gain, elevation, active);
+* Helium entity service: the hotspot NFT (asset id, asserted location, gain, elevation). Its
+  is_active flag is not used: it is false for every one of the ~1M hotspots;
 * Helium reward oracles: lifetime rewards per token (HNT now, IOT before HIP-138);
 * Solana mainnet RPC: the lazy-distributor recipient accounts (rewards claimed so far), the
   claim transactions (history and the wallet that receives them) and that wallet's balances;
@@ -152,7 +153,7 @@ class Helium:
                 log.warning("nearby hotspot scan failed: %s", e)
 
     async def scan_nearby(self, lat: float, lon: float) -> None:
-        total = active = 0
+        total = 0
         rows: list[dict[str, Any]] = []
         cursor = None
         async with httpx.AsyncClient(timeout=60, transport=self.transport) as http:
@@ -163,19 +164,18 @@ class Helium:
                 page = r.json()
                 for h in page.get("items", []):
                     total += 1
-                    active += bool(h.get("is_active"))
                     if h.get("lat") is None:
                         continue
                     d = distance_km(lat, lon, h["lat"], h["long"])
                     if 0 < d <= NEARBY_KM:
                         rows.append({"key": h["entity_key_str"], "lat": h["lat"], "lon": h["long"],
-                                     "active": int(bool(h.get("is_active"))), "distance_km": round(d, 2)})
+                                     "distance_km": round(d, 2)})
                 cursor = page.get("cursor")
                 if not cursor or not page.get("items"):
                     break
-        await self.db.replace_helium_nearby(rows, {"ts": time.time(), "total": total, "active": active,
+        await self.db.replace_helium_nearby(rows, {"ts": time.time(), "total": total,
                                                     "nearby": len(rows), "radius_km": NEARBY_KM})
-        log.info("helium hotspot scan: %d hotspots, %d active, %d within %d km", total, active, len(rows), NEARBY_KM)
+        log.info("helium hotspot scan: %d hotspots, %d within %d km", total, len(rows), NEARBY_KM)
 
     async def refresh(self) -> None:
         state: dict[str, Any] = {"enabled": True, "updated": time.time(), "errors": {}}
@@ -219,7 +219,7 @@ class Helium:
         return {
             "name": e.get("name"), "asset_id": e.get("asset_id"), "key": key,
             "networks": next((a["value"] for a in e.get("attributes", []) if a.get("trait_type") == "networks"), []),
-            "active": iot.get("is_active"), "lat": iot.get("lat"), "lon": iot.get("long"), "h3": iot.get("location"),
+            "lat": iot.get("lat"), "lon": iot.get("long"), "h3": iot.get("location"),
             "city": iot.get("city"), "state": iot.get("state"), "country": iot.get("country"),
             "elevation_m": _num(iot.get("elevation")), "gain_dbi": (_num(iot.get("gain")) or 0) / 10 or None,
             "onboarded": iot.get("created_at"), "dc_onboarding_fee_paid": _num(iot.get("dc_onboarding_fee_paid")),

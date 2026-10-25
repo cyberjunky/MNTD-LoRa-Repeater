@@ -464,14 +464,13 @@
     const box = $("#he-map"), info = $("#he-map-info");
     if (h.lat == null) { info.textContent = "the hotspot has no asserted location"; return; }
     const near = await api("/api/helium/nearby"), sc = near.scan, list = near.hotspots || [];
-    const act = list.filter((x) => x.active), nearestActive = act[0];
     info.textContent = sc
-      ? `${list.length} hotspots within ${sc.radius_km} km · ${act.length} active${nearestActive ? ` · nearest active ${n1(nearestActive.distance_km, 1)} km` : ""} · network-wide ${sc.active.toLocaleString()} of ${sc.total.toLocaleString()} active · scanned ${ago(sc.ts)}`
+      ? `${list.length.toLocaleString()} registered within ${sc.radius_km} km${list[0] ? ` · nearest ${n1(list[0].distance_km, 1)} km` : ""} · ${sc.total.toLocaleString()} on Helium in total · from the Helium registry, not heard by this box · scanned ${ago(sc.ts)}`
       : "scanning the Helium hotspot list (about a million entries) for neighbours; this takes a few minutes after start";
     try { await loadLeaflet(); } catch (e) { box.textContent = e.message; return; }
     const L = window.L;
     if (!heMap) {
-      heMap = L.map(box, { scrollWheelZoom: false }).setView([h.lat, h.lon], 11);
+      heMap = L.map(box, { scrollWheelZoom: false, preferCanvas: true }).setView([h.lat, h.lon], 11);
       L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "© OpenStreetMap contributors" }).addTo(heMap);
     }
     heLayer?.remove();
@@ -479,12 +478,11 @@
     [5, 10, 20].forEach((r) => L.circle([h.lat, h.lon], { radius: r * 1000, color: css("--text-muted"), weight: 1, fill: false, dashArray: "4 4" })
       .bindTooltip(`${r} km`, { permanent: false }).addTo(heLayer));
     for (const x of list) {
-      L.circleMarker([x.lat, x.lon], { radius: x.active ? 6 : 4, weight: 1, color: x.active ? css("--good") : css("--text-muted"),
-        fillColor: x.active ? css("--good") : css("--text-muted"), fillOpacity: x.active ? 0.9 : 0.45 })
-        .bindPopup(`<span class="mono">${esc(x.key.slice(0, 8))}…</span><br>${n1(x.distance_km, 1)} km · ${x.active ? "active" : "inactive"}`)
+      L.circleMarker([x.lat, x.lon], { radius: 3, weight: 0, fillColor: css("--series-1"), fillOpacity: 0.45 })
+        .bindPopup(`<span class="mono">${esc(x.key.slice(0, 8))}…</span><br>${n1(x.distance_km, 1)} km`)
         .on("popupopen", async (ev) => {
           const e = await api(`/api/helium/hotspot/${encodeURIComponent(x.key)}`).catch(() => null);
-          if (e) ev.popup.setContent(`<b>${esc(e.name || "")}</b><br>${n1(x.distance_km, 1)} km away · ${x.active ? "active" : "inactive"}<br>${esc([e.city, e.state].filter(Boolean).join(", "))}${e.gain_dbi ? `<br>${e.gain_dbi} dBi${e.elevation_m != null ? ` · ${e.elevation_m} m` : ""}` : ""}${e.onboarded ? `<br>onboarded ${new Date(e.onboarded).toLocaleDateString()}` : ""}`);
+          if (e) ev.popup.setContent(`<b>${esc(e.name || "")}</b><br>${n1(x.distance_km, 1)} km away<br>${esc([e.city, e.state].filter(Boolean).join(", "))}${e.gain_dbi ? `<br>${e.gain_dbi} dBi${e.elevation_m != null ? ` · ${e.elevation_m} m` : ""}` : ""}${e.onboarded ? `<br>onboarded ${new Date(e.onboarded).toLocaleDateString()}` : ""}`);
         })
         .addTo(heLayer);
     }
@@ -507,7 +505,7 @@
     tiles.append(
       tile("Hotspot", h.name || gw.name || "?", gw.key || "", gw.key ? "good" : "critical"),
       tile("Packet router", gw.router?.connected ? "connected" : "offline", `${gw.region || "?"} · gateway-rs ${gw.fw || "?"}`, gw.router?.connected ? "good" : "critical"),
-      tile("On-chain status", h.active ? "active" : "inactive", `${(h.networks || []).join(", ").toUpperCase() || "–"} · onboarded ${h.onboarded ? new Date(h.onboarded).toLocaleDateString() : "?"}${h.active ? "" : " · data only, Helium PoC is offline"}`, h.active ? "good" : "warning"),
+      tile("Onboarded", h.onboarded ? new Date(h.onboarded).toLocaleDateString() : "–", `${(h.networks || []).join(", ").toUpperCase() || "–"} · data only, Helium PoC is offline`),
       tile("Asserted location", h.city || "–", `${h.gain_dbi != null ? h.gain_dbi + " dBi" : ""}${h.elevation_m != null ? ` · ${h.elevation_m} m` : ""}`),
       tile("HNT earned", fmtAmt(t.HNT?.lifetime, 4), eur && t.HNT ? `≈ € ${fmtAmt(t.HNT.lifetime * eur)} at € ${fmtAmt(eur, 3)}/HNT` : "lifetime"),
       tile("IOT earned", fmtAmt(t.IOT?.lifetime, 0), "lifetime, before HIP-138"),
@@ -525,7 +523,7 @@
       ["Antenna gain", h.gain_dbi != null ? `${h.gain_dbi} dBi` : undefined], ["Elevation", h.elevation_m != null ? `${h.elevation_m} m` : undefined],
       ["Onboarded", h.onboarded ? fmtTs(Date.parse(h.onboarded) / 1000) : undefined],
       ["Onboarding fee", h.dc_onboarding_fee_paid != null ? `${fmtAmt(h.dc_onboarding_fee_paid, 0)} DC (≈ $${fmtAmt(h.dc_onboarding_fee_paid / 1e5, 0)})` : undefined],
-      ["Rewardable networks", esc((h.networks || []).join(", "))], ["Active", h.active == null ? undefined : h.active ? "yes" : "no"],
+      ["Rewardable networks", esc((h.networks || []).join(", "))],
     ]);
     table($("#he-rewards"), [
       { h: "Token", f: (x) => x.sym }, { h: "Lifetime", f: (x) => fmtAmt(x.lifetime, 4), num: true }, { h: "Claimed", f: (x) => fmtAmt(x.claimed, 4), num: true },

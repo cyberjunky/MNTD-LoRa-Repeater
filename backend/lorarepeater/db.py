@@ -163,13 +163,12 @@ CREATE TABLE IF NOT EXISTS helium_claims (   -- reward claim transactions (immut
 CREATE TABLE IF NOT EXISTS helium_nearby (   -- IOT hotspots within NEARBY_KM of ours (weekly scan)
     key         TEXT PRIMARY KEY,
     lat REAL, lon REAL,
-    active      INTEGER,
     distance_km REAL
 );
 
 CREATE TABLE IF NOT EXISTS helium_scan (     -- one row: when the hotspot list was last scanned
     id INTEGER PRIMARY KEY CHECK (id = 1),
-    ts REAL, total INTEGER, active INTEGER, nearby INTEGER, radius_km REAL
+    ts REAL, total INTEGER, nearby INTEGER, radius_km REAL
 );
 
 CREATE TABLE IF NOT EXISTS events (
@@ -292,10 +291,10 @@ class Database:
     async def replace_helium_nearby(self, rows: list[dict[str, Any]], scan: dict[str, Any]) -> None:
         async with self._lock:
             await self.conn.execute("DELETE FROM helium_nearby")
-            await self.conn.executemany("INSERT INTO helium_nearby (key, lat, lon, active, distance_km) "
-                                        "VALUES (:key, :lat, :lon, :active, :distance_km)", rows)
-            await self.conn.execute("INSERT OR REPLACE INTO helium_scan (id, ts, total, active, nearby, radius_km) "
-                                    "VALUES (1, :ts, :total, :active, :nearby, :radius_km)", scan)
+            await self.conn.executemany("INSERT INTO helium_nearby (key, lat, lon, distance_km) "
+                                        "VALUES (:key, :lat, :lon, :distance_km)", rows)
+            await self.conn.execute("INSERT OR REPLACE INTO helium_scan (id, ts, total, nearby, radius_km) "
+                                    "VALUES (1, :ts, :total, :nearby, :radius_km)", scan)
             await self.conn.commit()
 
     async def bump_node_packets(self, num: int) -> None:

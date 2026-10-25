@@ -112,13 +112,13 @@ configured: everything is discovered from the hotspot key.
 | Step | Source | Call | What it yields |
 |---|---|---|---|
 | 1 | gateway-rs local API | `helium_gateway info key name region router fw` | hotspot key (ECC compact, base58), animal name, region, packet-router session |
-| 2 | Helium entity service | `GET https://entities.nft.helium.io/<hotspot key>` | the hotspot NFT: asset id, rewardable networks, asserted location (H3 cell, lat/lon, city), gain, elevation, onboarding date and fee, `is_active` |
+| 2 | Helium entity service | `GET https://entities.nft.helium.io/<hotspot key>` | the hotspot NFT: asset id, rewardable networks, asserted location (H3 cell, lat/lon, city), gain, elevation, onboarding date and fee (its `is_active` flag is false for every hotspot, so it is not used) |
 | 3 | Helium reward oracles | `GET https://hnt-rewards.oracle.helium.io/?assetId=<asset>` and `iot-rewards.oracle…` | lifetime rewards per token (`currentRewards`; HNT 8 decimals, IOT 6) |
 | 4 | Solana RPC `getProgramAccounts` | lazy-distributor program `1azyuavdMyvsivtNxPoz6SucD18eDHeXzFCUPq5XU7w`, memcmp on the asset at offset 40 | one `RecipientV0` account per distributor; `total_rewards` (u64 at offset 72) is what was claimed. Distributor `6gcZXj…` pays HNT, `37eiz5…` paid IOT |
 | 5 | Solana RPC `getSignaturesForAddress` + `getTransaction` | the recipient accounts | claim history: for each claim the wallet whose token balance went up, and by how much (transactions are cached in memory) |
 | 6 | Solana RPC `getBalance`, `getTokenAccountsByOwner` | the wallet that received the claims | SOL, HNT and IOT balances of the owner wallet |
 | 7 | CoinGecko | `simple/price?ids=helium&vs_currencies=eur,usd` | HNT price for value estimates |
-| 8 | Helium entity service, weekly | `GET https://entities.nft.helium.io/v2/hotspots?subnetwork=iot[&cursor=…]`, about 104 pages of 10,000 | every IOT hotspot's key, location and `is_active`; kept: those within 30 km (`helium_nearby` table) plus network-wide totals, drawn on the map (OpenStreetMap tiles via Leaflet); a marker's name and details come from step 2 for that key when clicked |
+| 8 | Helium entity service, weekly | `GET https://entities.nft.helium.io/v2/hotspots?subnetwork=iot[&cursor=…]`, about 104 pages of 10,000 | every IOT hotspot's key and location; kept: those within 30 km (`helium_nearby` table) plus the network-wide total, drawn on the map (OpenStreetMap tiles via Leaflet); a marker's name and details come from step 2 for that key when clicked |
 
 Derived values: unclaimed = lifetime (oracle) − claimed (recipient account); value = amount ×
 HNT price. IOT rewards ended with HIP-138 (HNT is the only reward token since), so IOT shows
