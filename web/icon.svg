@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="MNTD LoRa Repeater">
+  <title>MNTD LoRa Repeater</title>
+  <defs>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f3d27a"/>
+      <stop offset="0.55" stop-color="#d4a73c"/>
+      <stop offset="1" stop-color="#a87b1f"/>
+    </linearGradient>
+  </defs>
+  <!-- radio waves -->
+  <path d="M41 13a9 9 0 0 1 9 0" fill="none" stroke="#2a78d6" stroke-width="3" stroke-linecap="round"/>
+  <path d="M37 8a16 16 0 0 1 17 0" fill="none" stroke="#2a78d6" stroke-width="3" stroke-linecap="round" opacity=".6"/>
+  <!-- antenna -->
+  <rect x="43.5" y="17" width="4" height="17" rx="2" fill="#2b2b2b"/>
+  <!-- gold aluminium box -->
+  <rect x="8" y="30" width="48" height="26" rx="6" fill="url(#gold)" stroke="#8a6416" stroke-width="1.5"/>
+  <!-- extrusion fins -->
+  <path d="M14 37h28M14 43h28M14 49h28" stroke="#a87b1f" stroke-width="1.6" stroke-linecap="round" opacity=".55"/>
+  <!-- status LED -->
+  <circle cx="49" cy="43" r="3.2" fill="#1baf7a" stroke="#0e6b4a" stroke-width="1"/>
+</svg>

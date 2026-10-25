@@ -1,3 +1,5 @@
+<p align="center"><img src="web/icon.svg" width="96" alt="MNTD LoRa Repeater icon"></p>
+
 # MNTD LoRa Repeater
 
 Give a retired **MNTD Goldspot / RAK Hotspot Miner V2** Helium hotspot a second life as a
@@ -7,6 +9,10 @@ hears and relays, and a web dashboard.
 The box is a Raspberry Pi 4 Model B with a RAKwireless HAT carrying a RAK2287 (Semtech SX1302,
 EU868, GPS). Nothing from the Helium firmware is kept: a stock Raspberry Pi OS card plus one
 install script replaces it.
+
+A tribute to the hardware: the Goldspot was built by **MNTD** with a carrier board and
+concentrator from **RAKwireless**, and it is a well-made box. This project is independent and
+not affiliated with or endorsed by either company; the icon is an original drawing of the device.
 
 ## Features
 

@@ -132,3 +132,4 @@ button:disabled { opacity: .5; cursor: wait; }
 .pager button:disabled { opacity: .4; cursor: default; }
 .pager span { margin: 0 6px; }
 .pager[hidden] { display: none; }
+.brand .logo { width: 30px; height: 30px; display: block; }
