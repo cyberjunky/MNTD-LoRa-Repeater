@@ -19,9 +19,8 @@ install script replaces it.
   node, RSSI/SNR, airtime and the node database are recorded. A second SX1262 radio with
   `meshtasticd` is supported as an alternative.
 - **Telegram bridge**: mesh texts into a chat or channel, `/send` and `/dm` back to the mesh.
-- **Time sync** via `chrony` in the GUI. The Goldspot HAT does not wire the RAK2287's GNSS to
-  the Pi (no I2C, no UART, no antenna lead), so there is no GPS; a USB receiver through `gpsd`
-  is supported if you add one.
+- **No GPS**: the Goldspot HAT does not wire the RAK2287's GNSS to the Pi (no I2C, no UART, no
+  antenna lead). The clock comes from NTP via the stock `systemd-timesyncd`, shown in the GUI.
 - **Web GUI** (no internet needed): live packet feeds, per-channel and per-data-rate charts,
   devices and nodes, messages, upstream health, time sync, events. Light/dark.
 - **SQLite** storage with retention, JSON API, WebSocket live feed.
@@ -47,7 +46,7 @@ Then open `http://<hostname>:8080/` and add your LoRaWAN network servers to
 
 | Path | Content |
 |---|---|
-| `backend/` | Python package `lorarepeater` (FastAPI, asyncio UDP mux, Meshtastic engine, chrony/gpsd monitor, diagnostics) and tests |
+| `backend/` | Python package `lorarepeater` (FastAPI, asyncio UDP mux, Meshtastic engine, time-sync monitor, diagnostics) and tests |
 | `web/` | The dashboard (static HTML/CSS/JS) |
 | `install/` | `install.sh`, systemd units, sx1302_hal patch, reset script, polkit and udev rules, meshtasticd templates |
 | `docs/` | [hardware](docs/hardware.md), [firmware analysis](docs/firmware-analysis.md), [architecture](docs/architecture.md), [Meshtastic on the SX1302](docs/meshtastic-on-sx1302.md), [install](docs/install.md), [research](docs/research/) |

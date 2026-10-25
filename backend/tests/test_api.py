@@ -4,7 +4,7 @@ async def test_status(client):
     body = r.json()
     assert body["db"]["lorawan"] == 1 and body["db"]["mesh"] == 1 and body["db"]["nodes"] == 1
     assert body["gwmp"]["upstreams"] == [] and body["mesh"]["enabled"] is False
-    assert body["gps"]["fix"] == "unknown"
+    assert body["time"] == {}
 
 
 async def test_lorawan_endpoints(client):
@@ -27,9 +27,8 @@ async def test_mesh_endpoints(client):
     assert s["top_nodes"][0]["long_name"] == "Test"
 
 
-async def test_events_and_gps(client):
+async def test_events(client):
     assert (await client.get("/api/events")).json()[0]["message"] == "test"
-    assert (await client.get("/api/gps/history")).json() == []
 
 
 async def test_index_serves_gui(client):

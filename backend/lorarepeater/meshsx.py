@@ -82,11 +82,10 @@ class Channel:
 
 
 class MeshSxEngine:
-    def __init__(self, cfg: MeshSxConfig, db: Database, mux: GwmpMux, gps: Any = None):
+    def __init__(self, cfg: MeshSxConfig, db: Database, mux: GwmpMux):
         self.cfg = cfg
         self.db = db
         self.mux = mux
-        self.gps = gps
         self.node_num = cfg.node_num or derive_node_num()
         self.my_byte = self.node_num & 0xFF
         self.channels = [Channel(i, c.name, c.psk) for i, c in enumerate(cfg.channels)]
@@ -390,19 +389,11 @@ class MeshSxEngine:
         data = mesh_pb2.Data(portnum=portnums_pb2.PortNum.Value("NODEINFO_APP"), payload=user.SerializeToString())
         await self._send_data(data, BROADCAST, self.channels[0], kind="nodeinfo")
 
-    def _position(self) -> dict[str, Any] | None:
-        """Live GPS fix if there is one, else the configured site position."""
-        fix = getattr(self.gps, "fix", None) if self.gps else None
-        if fix and fix.get("lat") is not None:
-            return fix
-        if self.cfg.position:
-            return {"lat": self.cfg.position.lat, "lon": self.cfg.position.lon, "alt": self.cfg.position.alt}
-        return None
-
     async def send_position(self) -> bool:
-        f = self._position()
-        if f is None:
+        pos = self.cfg.position
+        if pos is None:
             return False
+        f = {"lat": pos.lat, "lon": pos.lon, "alt": pos.alt}
         mesh_pb2, portnums_pb2, _, _ = _pb()
         bits = self.cfg.position_precision_bits
         lat_i, lon_i = int(f["lat"] * 1e7), int(f["lon"] * 1e7)

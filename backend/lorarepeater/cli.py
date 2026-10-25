@@ -14,11 +14,11 @@ from . import __version__, led
 from .api import create_app
 from .config import Config
 from .db import Database
-from .gps import GpsMonitor
 from .gwmp import GwmpMux
 from .mesh import MeshIngest
 from .meshsx import MeshSxEngine
 from .telegram import TelegramBridge
+from .timesync import TimeSync
 
 
 async def _serve(cfg: Config) -> None:
@@ -26,14 +26,14 @@ async def _serve(cfg: Config) -> None:
     await db.open()
     mux = GwmpMux(cfg.gwmp, db)
     mesh = MeshIngest(cfg.mesh, db)
-    gps = GpsMonitor(cfg.gps, db)
-    meshsx = MeshSxEngine(cfg.meshsx, db, mux, gps) if cfg.meshsx.enabled else None
+    timesync = TimeSync()
+    meshsx = MeshSxEngine(cfg.meshsx, db, mux) if cfg.meshsx.enabled else None
     telegram = TelegramBridge(cfg.telegram, db, meshsx=meshsx, mesh=mesh if cfg.mesh.enabled else None)
     if cfg.hardware.led_enabled:
         led.set_state("orange")
     await mux.start()
     await mesh.start()
-    await gps.start()
+    await timesync.start()
     if meshsx:
         await meshsx.start()
     await telegram.start()
@@ -54,7 +54,7 @@ async def _serve(cfg: Config) -> None:
                 last_prune = asyncio.get_running_loop().time()
 
     prune_task = asyncio.create_task(housekeeping_loop())
-    app = create_app(cfg, db, mux, mesh, gps, extras={"meshsx": meshsx, "telegram": telegram})
+    app = create_app(cfg, db, mux, mesh, timesync, extras={"meshsx": meshsx, "telegram": telegram})
     server = uvicorn.Server(uvicorn.Config(app, host=cfg.web.host, port=cfg.web.port, log_level="info", loop="asyncio"))
 
     loop = asyncio.get_running_loop()
@@ -70,7 +70,7 @@ async def _serve(cfg: Config) -> None:
         await telegram.stop()
         if meshsx:
             await meshsx.stop()
-        await gps.stop()
+        await timesync.stop()
         await mesh.stop()
         await mux.stop()
         if cfg.hardware.led_enabled:

@@ -14,7 +14,6 @@
     <button data-tab="overview" class="active">Overview</button>
     <button data-tab="lorawan">LoRaWAN</button>
     <button data-tab="mesh">Meshtastic</button>
-    <button data-tab="gps">GPS &amp; time</button>
     <button data-tab="events">Events</button>
     <button data-tab="diag">Diagnostics</button>
   </nav>
@@ -81,16 +80,6 @@
     </div>
   </section>
 
-  <!-- ============================ GPS ================================= -->
-  <section id="tab-gps" class="tab">
-    <div class="tiles" id="gps-tiles"></div>
-    <div class="grid2">
-      <figure class="card"><figcaption>Satellites used / seen</figcaption><div class="chart" id="chart-gps-sats"></div></figure>
-      <figure class="card"><figcaption>System clock offset vs reference (ms)</figcaption><div class="chart" id="chart-gps-offset"></div></figure>
-    </div>
-    <div class="card"><h3>chrony sources</h3><table class="tbl" id="gps-sources"></table></div>
-    <div class="card"><h3>Position</h3><p id="gps-pos" class="mono"></p></div>
-  </section>
 
   <!-- ============================ EVENTS ============================== -->
   <section id="tab-events" class="tab">

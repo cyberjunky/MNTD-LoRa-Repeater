@@ -74,7 +74,7 @@ class MeshSxConfig(BaseModel):
     nodeinfo_interval_s: float = 3600.0
     position_broadcast: bool = False
     position_precision_bits: int = 16   # 32 = exact, 16 = about 1.5 km, as in the Meshtastic app
-    position: StaticPosition | None = None   # fixed site position (no GPS on this hardware)
+    position: StaticPosition | None = None   # site position announced when position_broadcast
     channels: list[MeshChannelConfig] = Field(default_factory=lambda: [MeshChannelConfig()])
 
 
@@ -87,21 +87,6 @@ class TelegramConfig(BaseModel):
     notify_chat_id: int | None = None                           # where received texts are posted
     notify_all_text: bool = True                                # also texts not addressed to us
     poll_timeout_s: int = 30
-
-
-class GpsConfig(BaseModel):
-    """Time-sync state from chrony, and a GPS fix from gpsd when a receiver is attached.
-
-    The Goldspot HAT does not wire the RAK2287's GNSS to the Pi (no I2C, no UART, no antenna
-    cable), so gpsd is off by default; the chrony part always runs.
-    """
-
-    enabled: bool = False
-    gpsd_host: str = "127.0.0.1"
-    gpsd_port: int = 2947
-    reconnect_s: float = 15.0
-    sample_interval_s: float = 60.0
-    chrony_interval_s: float = 30.0
 
 
 class WebConfig(BaseModel):
@@ -128,7 +113,6 @@ class Config(BaseModel):
     mesh: MeshConfig = Field(default_factory=MeshConfig)
     meshsx: MeshSxConfig = Field(default_factory=MeshSxConfig)
     telegram: TelegramConfig = Field(default_factory=TelegramConfig)
-    gps: GpsConfig = Field(default_factory=GpsConfig)
     web: WebConfig = Field(default_factory=WebConfig)
     hardware: HardwareConfig = Field(default_factory=HardwareConfig)
 

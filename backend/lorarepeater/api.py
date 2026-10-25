@@ -19,9 +19,9 @@ from . import __version__
 from .config import Config
 from .db import Database
 from .diag import Diag, add_diag_routes
-from .gps import GpsMonitor
 from .gwmp import GwmpMux
 from .mesh import MeshIngest
+from .timesync import TimeSync
 
 log = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ def _read_cpu_temp(path: str) -> float | None:
         return None
 
 
-def create_app(cfg: Config, db: Database, mux: GwmpMux, mesh: MeshIngest, gps: GpsMonitor,
+def create_app(cfg: Config, db: Database, mux: GwmpMux, mesh: MeshIngest, timesync: TimeSync,
                extras: dict[str, Any] | None = None) -> FastAPI:
     """`extras` maps a name to an optional object with a status() method (meshsx, telegram)."""
     extras = extras or {}
@@ -111,14 +111,9 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, mesh: MeshIngest, gps: G
             "db": {"path": str(cfg.db_path), "retention_days": cfg.retention_days, **(counts or {})},
             "gwmp": mux.status(),
             "mesh": mesh.status(),
-            "gps": gps.status(),
+            "time": timesync.status(),
             **{name: (obj.status() if obj is not None else None) for name, obj in extras.items()},
         }
-
-    @app.get("/api/gps/history")
-    async def gps_history(hours: int = Query(24, le=24 * 90)) -> list[dict[str, Any]]:
-        since = time.time() - hours * 3600
-        return await db.fetch("SELECT * FROM gps_fixes WHERE ts >= ? ORDER BY ts", (since,))
 
     @app.get("/api/events")
     async def events(limit: int = Query(100, le=1000)) -> list[dict[str, Any]]:

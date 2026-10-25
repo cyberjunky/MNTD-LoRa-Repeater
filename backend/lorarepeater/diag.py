@@ -23,7 +23,7 @@ from fastapi.responses import PlainTextResponse
 
 from .config import Config
 
-UNITS = ["lora-pkt-fwd", "lorarepeater", "chrony", "meshtasticd"]
+UNITS = ["lora-pkt-fwd", "lorarepeater", "systemd-timesyncd", "meshtasticd"]
 RESTARTABLE = list(UNITS)
 LOG_SOURCES = {**{u: ["-u", u] for u in UNITS}, "kernel": ["-k"], "all": []}
 NOISE = ("syncword not found",)  # lora_pkt_fwd debug chatter
@@ -31,8 +31,7 @@ SECRET_KEYS = ("token", "psk", "password", "secret", "key")
 BUTTON_PIN = 7
 FORWARDER_ENV = Path("/etc/default/lora-pkt-fwd")
 GLOBAL_CONF = Path("/etc/lorarepeater/global_conf.json")
-GLOBAL_CONF_KEYS = ("gateway_ID", "server_address", "serv_port_up", "serv_port_down",
-                    "gps_tty_path", "gps_i2c_path")
+GLOBAL_CONF_KEYS = ("gateway_ID", "server_address", "serv_port_up", "serv_port_down")
 DEV_GLOBS = ("spidev*", "i2c-*", "ttyS*", "ttyAMA*", "ttyACM*", "ttyUSB*", "gpiochip*")
 
 
@@ -192,6 +191,8 @@ class Diag:
             return [{"unit": u, "active": "unknown", "sub": out.strip()[:80]} for u in UNITS]
         rows = []
         for blk in parse_systemctl_show(out):
+            if blk.get("LoadState") == "not-found":   # e.g. meshtasticd in the default mode
+                continue
             unit = blk.get("Id", "").removesuffix(".service")
             rows.append({
                 "unit": unit, "description": blk.get("Description"), "load": blk.get("LoadState"),

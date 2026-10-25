@@ -41,7 +41,7 @@ log "1/8 apt packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
 apt-get install -y -q git build-essential python3 python3-venv python3-dev i2c-tools \
-    raspi-utils chrony curl ca-certificates
+    raspi-utils systemd-timesyncd curl ca-certificates
 
 # ------------------------------------------------------------------------------------------
 log "2/8 boot config ($BOOT_CFG): SPI, I2C, watchdog"
@@ -173,7 +173,8 @@ install -m 644 "$REPO_DIR/install/udev/99-lorarepeater-leds.rules" /etc/udev/rul
 udevadm control --reload && udevadm trigger --subsystem-match=leds --action=add
 systemd-tmpfiles --create /etc/tmpfiles.d/lorarepeater.conf
 systemctl daemon-reload
-systemctl enable lora-pkt-fwd lorarepeater chrony >/dev/null
+systemctl enable lora-pkt-fwd lorarepeater >/dev/null
+systemctl enable --now systemd-timesyncd >/dev/null
 
 # ------------------------------------------------------------------------------------------
 log "8/8 Meshtastic ($MESH)"
@@ -220,5 +221,5 @@ cat <<EOF
 $([ "$MESH" = sx1302 ] || [ "$MESH" = none ] || echo "  Meshtastic web : https://$(hostname -I 2>/dev/null | awk '{print $1}'):9443/")
 
 Reboot now so the boot overlays take effect:   sudo reboot
-Then check:  systemctl status lora-pkt-fwd lorarepeater chrony ; chronyc sources
+Then check:  systemctl status lora-pkt-fwd lorarepeater ; timedatectl timesync-status
 EOF

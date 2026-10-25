@@ -30,7 +30,7 @@ backend (`MESH=meshstick`), see [research/meshtastic-options.md](research/meshta
                         |  SPI0 CE0, reset GPIO 25
                         v
    +------------------------------------------+
-   | lora_pkt_fwd (sx1302_hal, patched)       |        chrony (NTP client, time-sync state)
+   | lora_pkt_fwd (sx1302_hal, patched)       |        systemd-timesyncd (NTP client)
    | ch0-7 LoRaWAN 0x34 | service ch 0x2B     |
    | 869.525 SF11 BW250 = Meshtastic LongFast |
    +---------------------+--------------------+
@@ -42,7 +42,7 @@ backend (`MESH=meshstick`), see [research/meshtastic-options.md](research/meshta
    |              hands 869.525/SF11BW250 frames to the mesh engine, sends txpk    |
    |  meshsx.py : Meshtastic node (decrypt, decode, dedup, relay, ACK, NodeInfo)   |
    |  telegram.py: bot bridge (/send, /dm, texts -> chat)                          |
-   |  gps.py    : chronyc (+ gpsd opt.) mesh.py : meshtasticd client (alternative) |
+   |  timesync.py: timedatectl          mesh.py : meshtasticd client (alternative) |
    |  diag.py   : services, journal, hardware scan, concentrator probe, actions     |
    |  db.py     : SQLite (WAL)          api.py  : FastAPI + WebSocket + static GUI |
    +------+------------------------------+-----------------------+----------------+
@@ -91,21 +91,20 @@ backend (`MESH=meshstick`), see [research/meshtastic-options.md](research/meshta
   is not connected to the Pi at all: nothing at 0x42 on any bus, the UART pins float, and the
   module's GPS u.FL has no cable (verified 2026-10-25). The forwarder runs without GPS
   timestamps, which only matters for Class B beacons.
-- `chrony` keeps time from NTP; `gps.py` shows its tracking state and sources in the GUI.
-  If a USB receiver is added, `gps.enabled: true` makes `gps.py` read gpsd as well, and the
-  Meshtastic node then announces the live fix instead of the configured site position.
+- The stock `systemd-timesyncd` keeps time from NTP; `timesync.py` shows its server and sync
+  state on the Overview. The Meshtastic node announces the configured `meshsx.position`.
 
 ### Storage
 
 SQLite in WAL mode at `/var/lib/lorarepeater/lorarepeater.db`, pruned after `retention_days`
 (90 by default). Tables: `lorawan_packets`, `gateway_stats`, `upstream_status`,
-`mesh_packets`, `mesh_nodes`, `gps_fixes`, `events`. A 24/7 EU868 gateway with Meshtastic
+`mesh_packets`, `mesh_nodes`, `events`. A 24/7 EU868 gateway with Meshtastic
 produces a few MB per day.
 
 ### Web GUI
 
 Single page, no build step, no external dependencies (works without internet). Tabs: Overview,
-LoRaWAN, Meshtastic, GPS & time, Events, Diagnostics. Live updates over the WebSocket feed. Light
+LoRaWAN, Meshtastic, Events, Diagnostics. Live updates over the WebSocket feed. Light
 and dark theme; charts drawn as inline SVG with hover tooltips and a validated colour palette.
 Diagnostics shows service states with restart buttons (polkit rule, no root), the journal per
 unit, an I2C/GPIO/device scan, a `chip_id` probe and the masked effective configuration.

@@ -29,6 +29,7 @@
   };
   let tab = "overview";
   try { tab = localStorage.getItem("tab") || tab; } catch {}
+  if (!document.getElementById(`tab-${tab}`)) tab = "overview";
   const showTab = (name) => {
     tab = name;
     document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
@@ -211,7 +212,7 @@
     status = await api("/api/status");
     $("#title").textContent = status.title;
     document.title = status.title;
-    const g = status.gwmp, m = status.mesh, gps = status.gps, sx = status.meshsx, tg = status.telegram;
+    const g = status.gwmp, m = status.mesh, clk = status.time, sx = status.meshsx, tg = status.telegram;
     const fwdOk = g.forwarder_seen_s_ago != null && g.forwarder_seen_s_ago < 120;
     const upOk = !g.upstreams.length || g.upstreams.some((u) => u.alive);
     const meshOk = sx ? fwdOk : (!m.enabled || m.connected);
@@ -224,8 +225,7 @@
       tile("Packet forwarder", fwdOk ? "running" : "no data", g.forwarder_seen_s_ago == null ? "never seen" : `last seen ${g.forwarder_seen_s_ago}s ago · EUI ${g.gateway_eui || "?"}`, fwdOk ? "good" : "critical"),
       tile("Upstream networks", `${g.upstreams.filter((u) => u.alive).length} / ${g.upstreams.length}`, g.upstreams.map((u) => u.name).join(", ") || "none configured", g.upstreams.length ? (upOk ? "good" : "critical") : "unknown"),
       meshTile,
-      tile("GPS fix", gps.enabled ? gps.fix : "disabled", gps.sats_used != null ? `${gps.sats_used} sats used · ${gps.sats_seen} seen` : (gps.connected ? "waiting for TPV" : "gpsd not connected"), !gps.enabled ? "unknown" : gps.fix === "3D" ? "good" : gps.fix === "2D" ? "warning" : "critical"),
-      tile("Time sync", gps.time_sync?.source || "–", gps.time_sync?.offset_s != null ? `offset ${(gps.time_sync.offset_s * 1000).toFixed(1)} ms · stratum ${gps.time_sync.stratum}` : "chrony not reporting", gps.time_sync?.ref_id === "GPS" ? "good" : gps.time_sync?.source ? "warning" : "unknown"),
+      tile("Time sync", clk.synchronized ? "synced" : clk.server ? "not synced" : "–", [clk.server, clk.stratum != null ? `stratum ${clk.stratum}` : null, clk.poll_interval ? `poll ${clk.poll_interval}` : null].filter(Boolean).join(" · ") || "timesyncd not reporting", clk.synchronized ? "good" : clk.server ? "warning" : "unknown"),
       tile("Stored packets", `${(status.db.lorawan || 0) + (status.db.mesh || 0)}`, `${status.db.lorawan || 0} LoRaWAN · ${status.db.mesh || 0} mesh · ${status.db.nodes || 0} nodes`),
       tile("CPU temperature", status.cpu_temp_c == null ? "–" : `${n1(status.cpu_temp_c, 1)} °C`, `up ${ago(Date.now() / 1000 - status.uptime_s)}`.replace(" ago", ""), status.cpu_temp_c == null ? "unknown" : status.cpu_temp_c > 75 ? "critical" : status.cpu_temp_c > 65 ? "warning" : "good"),
     );
@@ -312,26 +312,6 @@
   $("#mesh-more").onclick = () => loadMeshLog(false);
   $("#mesh-port").onchange = () => loadMeshLog(true);
 
-  async function refreshGps() {
-    const h = hours();
-    const hist = await api(`/api/gps/history?hours=${h}`);
-    const g = status.gps, tiles = $("#gps-tiles"); tiles.innerHTML = "";
-    tiles.append(tile("Fix", g.fix, g.device || "", g.fix === "3D" ? "good" : g.fix === "2D" ? "warning" : "critical"),
-      tile("Satellites", g.sats_used == null ? "–" : `${g.sats_used}`, `${g.sats_seen ?? "–"} in view · HDOP ${n1(g.hdop, 1)}`),
-      tile("Accuracy", g.eph == null ? "–" : `${n1(g.eph, 0)} m`, `vertical ${n1(g.epv, 0)} m`),
-      tile("Reference", g.time_sync?.ref_id || "–", g.time_sync?.source || "", g.time_sync?.ref_id === "GPS" ? "good" : "warning"),
-      tile("Clock offset", g.time_sync?.offset_s == null ? "–" : `${(g.time_sync.offset_s * 1000).toFixed(2)} ms`, `rms ${g.time_sync?.rms_offset_s == null ? "–" : (g.time_sync.rms_offset_s * 1000).toFixed(2)} ms`),
-      tile("Stratum", g.time_sync?.stratum || "–", g.time_sync?.leap || ""));
-    lines($("#chart-gps-sats"), hist.map((r) => ({ t: r.ts, used: r.sats_used, seen: r.sats_seen })), ["used", "seen"], ["used", "in view"], { fmtVal: (v) => n1(v, 0), min: 0 });
-    lines($("#chart-gps-offset"), hist.map((r) => ({ t: r.ts, off: r.offset_s == null ? null : r.offset_s * 1000 })), ["off"], ["offset"], { fmtVal: (v) => n1(v, 2) });
-    table($("#gps-sources"), [
-      { h: "Source", f: (r) => r.name }, { h: "Mode", f: (r) => ({ "#": "refclock", "^": "server", "=": "peer" }[r.mode] || r.mode) },
-      { h: "State", f: (r) => ({ "*": "selected", "+": "combined", "-": "not combined", "?": "unreachable", "x": "false ticker", "~": "too variable" }[r.state] || r.state) },
-      { h: "Stratum", f: (r) => r.stratum, num: true }, { h: "Reach", f: (r) => r.reach, num: true }, { h: "Last rx (s)", f: (r) => r.last_rx, num: true }, { h: "Offset (s)", f: (r) => r.offset, num: true },
-    ], g.time_sync?.sources || [], { empty: "chrony not reporting" });
-    $("#gps-pos").innerHTML = g.lat == null ? "no position yet" : `${n1(g.lat, 6)}, ${n1(g.lon, 6)} · ${n1(g.alt, 0)} m · <a target="_blank" rel="noopener" href="https://www.openstreetmap.org/?mlat=${g.lat}&mlon=${g.lon}#map=15/${g.lat}/${g.lon}">OpenStreetMap</a> · GPS time ${esc(g.time || "")}`;
-  }
-
   async function refreshEvents() { table($("#events"), EVENT_COLS, await api("/api/events?limit=200")); }
 
   // ---------------------------------------------------------------- diagnostics
@@ -372,7 +352,6 @@
       tile("Disk free", fmtBytes(s.disk?.free), `of ${fmtBytes(s.disk?.total)}`, s.disk && s.disk.free / s.disk.total < 0.1 ? "warning" : "good"),
       tile("Power / thermal", thr == null ? "–" : thr.length ? "flags" : "ok", thr == null ? "vcgencmd not available" : thr.length ? thr.join(", ") : `${s.throttled_raw} · no under-voltage or throttling`, thr == null ? "unknown" : thr.length ? "warning" : "good"),
       tile("Forwarder", s.forwarder_env?.SX1302_RESET_PIN ? `GPIO ${s.forwarder_env.SX1302_RESET_PIN}` : "–", `${s.global_conf?.gateway_ID ? "EUI " + s.global_conf.gateway_ID : "no global_conf"} · HAL ${s.hal_version || "?"} · syncword ${s.forwarder_env?.LGW_SERVICE_SYNCWORD || "default"}`),
-      tile("GPS source", s.global_conf?.gps_i2c_path || s.global_conf?.gps_tty_path || "none", s.global_conf ? "from global_conf.json" : ""),
     );
   }
   async function refreshDiagLog() {
@@ -419,7 +398,7 @@
   async function refreshDiag() {
     if (!DIAG.srcReady) {
       const sel = $("#diag-log-src");
-      for (const s of ["lora-pkt-fwd", "lorarepeater", "chrony", "meshtasticd", "kernel", "all"]) sel.append(el("option", { value: s }, s));
+      for (const s of ["lora-pkt-fwd", "lorarepeater", "systemd-timesyncd", "meshtasticd", "kernel", "all"]) sel.append(el("option", { value: s }, s));
       DIAG.srcReady = true;
     }
     await Promise.all([refreshDiagSystem(), refreshDiagServices(), refreshDiagLog(), refreshDiagHardware(), refreshDiagConfig()].map((p) => p.catch(console.error)));
@@ -453,7 +432,7 @@
   }
 
   // ---------------------------------------------------------------- orchestration
-  const refreshTab = (name) => ({ overview: refreshOverview, lorawan: refreshLorawan, mesh: refreshMesh, gps: refreshGps, events: refreshEvents, diag: refreshDiag }[name]().catch(console.error));
+  const refreshTab = (name) => ({ overview: refreshOverview, lorawan: refreshLorawan, mesh: refreshMesh, events: refreshEvents, diag: refreshDiag }[name]().catch(console.error));
   async function refreshAll() { try { await refreshStatus(); await refreshTab(tab); } catch (e) { console.error(e); } }
   showTab(tab);
   refreshStatus().catch(console.error);

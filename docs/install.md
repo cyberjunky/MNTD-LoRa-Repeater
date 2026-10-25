@@ -33,7 +33,7 @@ sudo reboot
 
 The script (idempotent, re-run any time):
 
-1. installs packages (build tools, chrony, raspi-utils, i2c-tools),
+1. installs packages (build tools, raspi-utils, i2c-tools, systemd-timesyncd),
 2. enables SPI, I2C and the watchdog in `config.txt`,
 3. probes I2C bus 1 (ECC608 0x60, EEPROM 0x50; the EEPROM marks the board revision),
 4. builds Semtech `sx1302_hal` V2.1.0 into `/opt/sx1302_hal` with the HAL patch and installs
@@ -87,9 +87,9 @@ bridge (`chirpstack-gateway-bridge` in Semtech UDP mode) in front of the server.
 ## 4. Check
 
 ```sh
-systemctl status lora-pkt-fwd chrony lorarepeater meshtasticd
+systemctl status lora-pkt-fwd lorarepeater meshtasticd
 journalctl -u lora-pkt-fwd -f        # "concentrator started", rxpk lines
-chronyc sources                      # NTP sources (no GPS on this hardware)
+timedatectl timesync-status          # NTP server and sync state (no GPS on this hardware)
 curl -s localhost:8080/api/status | jq
 ```
 
@@ -106,8 +106,7 @@ probe (chip_id) and the effective configuration. Meshtastic web client (meshtast
 - **Forwarder exits with "failed to configure temperature sensor"**: the HAL patch did not
   apply; run `python3 install/patch_sx1302_hal.py /opt/sx1302_hal && make -C /opt/sx1302_hal`.
 - **GPS**: there is none. The HAT does not connect the RAK2287's GNSS (I2C, UART and the
-  antenna u.FL are all unconnected). For a USB receiver, install `gpsd`, point it at the
-  device and set `gps.enabled: true` in `config.yaml`.
+  antenna u.FL are all unconnected). Set `meshsx.position` for the node's announced location.
 - **Meshtastic not connected**: `journalctl -u meshtasticd -f`; for a MeshStick check `lsusb`
   shows `1a86:5512`.
 - **Front light**: the Pi's ACT (green) and PWR (red) LEDs, driven by the backend. Green =

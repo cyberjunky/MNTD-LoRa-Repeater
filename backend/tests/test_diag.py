@@ -20,8 +20,8 @@ Result=success
 ActiveEnterTimestamp=Sat 2026-10-25 16:03:32 CEST
 ExecMainPID=1234
 
-Id=gpsd.service
-Description=GPS (Global Positioning System) Daemon
+Id=systemd-timesyncd.service
+Description=Network Time Synchronization
 LoadState=loaded
 ActiveState=inactive
 SubState=dead
@@ -30,6 +30,12 @@ NRestarts=0
 Result=success
 ActiveEnterTimestamp=
 ExecMainPID=0
+
+Id=meshtasticd.service
+Description=meshtasticd.service
+LoadState=not-found
+ActiveState=inactive
+SubState=dead
 """
 
 JOURNAL = """2026-10-25T16:03:32+0200 lora_pkt_fwd[1182]: INFO: syncword not found at idx 517
@@ -47,7 +53,7 @@ def test_parse_env_file():
 
 def test_parse_systemctl_show():
     blocks = parse_systemctl_show(SYSTEMCTL_SHOW)
-    assert [b["Id"] for b in blocks] == ["lora-pkt-fwd.service", "gpsd.service"]
+    assert [b["Id"] for b in blocks] == ["lora-pkt-fwd.service", "systemd-timesyncd.service", "meshtasticd.service"]
     assert blocks[0]["NRestarts"] == "2" and blocks[1]["ActiveEnterTimestamp"] == ""
 
 
@@ -100,6 +106,7 @@ async def test_diag_endpoints(client, fake_run):
     svc = (await client.get("/api/diag/services")).json()
     assert svc[0]["unit"] == "lora-pkt-fwd" and svc[0]["restarts"] == 2 and svc[0]["restartable"]
     assert svc[1]["active"] == "inactive" and svc[1]["since"] is None
+    assert len(svc) == 2   # meshtasticd is not installed: hidden
 
     log = (await client.get("/api/diag/log?source=lora-pkt-fwd&lines=50")).json()
     assert log["lines"] == 2 and "syncword" not in log["text"]
@@ -118,8 +125,8 @@ async def test_diag_endpoints(client, fake_run):
     assert (await client.post("/api/diag/action/restart:sshd")).status_code == 404
     assert (await client.post("/api/diag/action/nope")).status_code == 404
 
-    r = (await client.post("/api/diag/action/restart:chrony")).json()
-    assert r["ok"] and ["systemctl", "restart", "chrony.service"] in fake_run
+    r = (await client.post("/api/diag/action/restart:systemd-timesyncd")).json()
+    assert r["ok"] and ["systemctl", "restart", "systemd-timesyncd.service"] in fake_run
 
     r = (await client.post("/api/diag/action/probe-concentrator")).json()
     assert r["ok"] and r["eui"] == "0016C001FF000001" and r["reset_pin"] == 25
