@@ -20,6 +20,7 @@ import asyncio
 import json
 import logging
 import os
+import socket
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -34,12 +35,14 @@ log = logging.getLogger(__name__)
 RxHook = Callable[[dict[str, Any]], bool]   # returns True to claim an rxpk (not LoRaWAN)
 
 PUSH_DATA, PUSH_ACK, PULL_DATA, PULL_RESP, PULL_ACK, TX_ACK = range(6)
+RESOLVE_S = 300
 
 
 @dataclass
 class Upstream:
     cfg: UpstreamConfig
     transport: asyncio.DatagramTransport | None = None
+    addr: tuple[str, int] | None = None   # resolved; network servers rotate their addresses
     last_push_ack: float = 0.0
     last_pull_ack: float = 0.0
     # token -> (time, kind) for outstanding requests
@@ -110,15 +113,8 @@ class GwmpMux:
         )
         log.info("GWMP listening on %s:%d", self.cfg.listen_host, self.cfg.listen_port)
         for up in self.upstreams:
-            try:
-                await self.loop.create_datagram_endpoint(
-                    lambda up=up: _UpstreamProtocol(self, up), remote_addr=(up.cfg.host, up.cfg.port)
-                )
-                await self.db.upsert_upstream_status(up.name, host=up.cfg.host, port=up.cfg.port)
-                log.info("upstream %s -> %s:%d", up.name, up.cfg.host, up.cfg.port)
-            except OSError as e:
-                log.error("cannot open upstream %s: %s", up.name, e)
-                await self.db.add_event("gwmp", "error", f"upstream {up.name}: {e}")
+            await self.db.upsert_upstream_status(up.name, host=up.cfg.host, port=up.cfg.port)
+            await self._connect_upstream(up)
         self._tasks.append(asyncio.create_task(self._pull_loop()))
         await self.db.add_event("gwmp", "info", f"mux started on udp/{self.cfg.listen_port} with {len(self.upstreams)} upstream(s)")
 
@@ -229,9 +225,32 @@ class GwmpMux:
 
     # -- upstream side ----------------------------------------------------------------
 
+    async def _connect_upstream(self, up: Upstream) -> None:
+        """(Re)open the upstream socket when the host resolves to a new address."""
+        try:
+            infos = await self.loop.getaddrinfo(up.cfg.host, up.cfg.port, family=socket.AF_INET, type=socket.SOCK_DGRAM)
+        except OSError as e:
+            log.warning("cannot resolve upstream %s (%s): %s", up.name, up.cfg.host, e)
+            return
+        addr = infos[0][4][:2]
+        if up.transport and addr == up.addr:
+            return
+        if up.transport:
+            up.transport.close()
+            await self.db.add_event("gwmp", "info", f"upstream {up.name}: {up.cfg.host} moved {up.addr[0]} -> {addr[0]}")
+        await self.loop.create_datagram_endpoint(lambda: _UpstreamProtocol(self, up), remote_addr=addr)
+        up.addr = addr
+        log.info("upstream %s -> %s (%s:%d)", up.name, up.cfg.host, *addr)
+
     async def _pull_loop(self) -> None:
-        """Keep a PULL_DATA keep-alive with each upstream so they can push downlinks."""
+        """Keep a PULL_DATA keep-alive with each upstream so they can push downlinks; re-resolve
+        the upstream hosts every RESOLVE_S."""
+        last_resolve = time.monotonic()
         while True:
+            if time.monotonic() - last_resolve > RESOLVE_S:
+                last_resolve = time.monotonic()
+                for up in self.upstreams:
+                    await self._connect_upstream(up)
             eui = self.gateway_eui or bytes(8)
             for up in self.upstreams:
                 if up.transport and eui != bytes(8):

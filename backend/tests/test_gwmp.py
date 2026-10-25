@@ -120,3 +120,31 @@ async def test_keepalive_and_downlink_roundtrip(setup):
     await asyncio.sleep(0.2)
     rows = await db.fetch("SELECT forwarded FROM lorawan_packets WHERE direction='down' ORDER BY id")
     assert json.loads(rows[1]["forwarded"]) == ["dropped:collision"]
+
+
+async def test_upstream_follows_address_change(tmp_path, monkeypatch):
+    import socket as _socket
+
+    from lorarepeater.config import GwmpConfig, UpstreamConfig
+    from lorarepeater.db import Database
+    from lorarepeater.gwmp import GwmpMux
+
+    db = Database(tmp_path / "r.db")
+    await db.open()
+    mux = GwmpMux(GwmpConfig(listen_port=0, upstreams=[UpstreamConfig(name="ns", host="ns.example", port=1700)]), db)
+    mux.loop = asyncio.get_running_loop()
+    answers = iter(["127.0.0.2", "127.0.0.2", "127.0.0.3"])
+
+    async def fake_getaddrinfo(host, port, **kw):
+        return [(_socket.AF_INET, _socket.SOCK_DGRAM, 0, "", (next(answers), port))]
+
+    monkeypatch.setattr(mux.loop, "getaddrinfo", fake_getaddrinfo)
+    up = mux.upstreams[0]
+    await mux._connect_upstream(up)
+    first = up.transport
+    await mux._connect_upstream(up)                  # same address: socket kept
+    assert up.transport is first and up.addr == ("127.0.0.2", 1700)
+    await mux._connect_upstream(up)                  # moved: new socket
+    assert up.transport is not first and up.addr == ("127.0.0.3", 1700) and first.is_closing()
+    up.transport.close()
+    await db.close()
