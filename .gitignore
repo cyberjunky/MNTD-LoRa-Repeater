@@ -37,3 +37,4 @@ skills-lock.json
 
 # Full extraction of the stock firmware
 firmware/extracted/
+NOTES.md
