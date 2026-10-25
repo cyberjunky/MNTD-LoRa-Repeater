@@ -1,0 +1,21 @@
+name: Feature request
+description: An idea to make the repeater more useful
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like to do
+      description: The situation or problem, not only the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: How it could work, on the box or in the web GUI.
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else
+      description: Hardware, networks (TTN, ChirpStack, ...), Meshtastic preset, screenshots.

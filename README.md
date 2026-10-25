@@ -77,7 +77,7 @@ Full guide: [docs/install.md](docs/install.md).
 cd backend
 python -m venv .venv
 .venv/bin/activate             # .venv\Scripts\activate on Windows
-pip install -e ".[dev,mesh]"
+pip install -e ".[dev]"
 pytest
 lorarepeater serve             # defaults: UDP 1730, web 8080, data/ dir
 ```

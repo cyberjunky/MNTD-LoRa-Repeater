@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Lint and test the backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"     # Raspberry Pi OS Trixie
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: pytest -q
+
+  web-and-scripts:
+    name: Check the web GUI and install scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: node --check web/app.js
+      - run: bash -n install/install.sh
+      - run: sh -n install/bin/reset_lgw.sh
+
+  hal-patch:
+    name: Patch and build sx1302_hal V2.1.0
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Lora-net/sx1302_hal
+          ref: V2.1.0
+          path: sx1302_hal
+      - run: python3 install/patch_sx1302_hal.py sx1302_hal
+      - run: make -C sx1302_hal -j"$(nproc)"

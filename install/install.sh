@@ -129,7 +129,7 @@ rsync -a --delete --exclude .venv "$REPO_DIR/backend/" "$INSTALL_DIR/backend/"
 rsync -a --delete "$REPO_DIR/web/" "$INSTALL_DIR/web/"
 [ -d "$INSTALL_DIR/venv" ] || python3 -m venv "$INSTALL_DIR/venv"
 "$INSTALL_DIR/venv/bin/pip" install -q --upgrade pip
-"$INSTALL_DIR/venv/bin/pip" install -q "$INSTALL_DIR/backend[mesh]"
+"$INSTALL_DIR/venv/bin/pip" install -q "$INSTALL_DIR/backend"
 [ -f "$CONF_DIR/config.yaml" ] || sed -e "s#__DATA_DIR__#$DATA_DIR#" "$REPO_DIR/install/config.example.yaml" > "$CONF_DIR/config.yaml"
 # IEEE MA-L/MA-M/MA-S registries: DevEUI/JoinEUI -> vendor name in the LoRaWAN tab
 mkdir -p "$DATA_DIR/ieee"

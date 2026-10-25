@@ -1,0 +1,45 @@
+name: Bug report
+description: Something does not work as described
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please remove addresses, EUIs, tokens and keys from anything you paste.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Installer
+        - Packet forwarder / concentrator
+        - LoRaWAN / upstream networks
+        - Meshtastic
+        - Telegram bridge
+        - Web GUI
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Shown on the About tab, or `git -C ~/MNTD-LoRa-Repeater log --oneline -1`.
+  - type: input
+    id: os
+    attributes:
+      label: Raspberry Pi OS
+      description: e.g. Debian 13 (trixie), 64-bit Lite
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: From the Diagnostics tab (Log → Download) or `journalctl -u lora-pkt-fwd -u lorarepeater -n 200`.
+      render: text
