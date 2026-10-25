@@ -95,7 +95,7 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync, heli
             "db": {"path": str(cfg.db_path), "retention_days": cfg.retention_days, **(counts or {})},
             "gwmp": mux.status(),
             "time": timesync.status(),
-            "helium": {k: v for k, v in (helium.status().get("gateway") or {}).items() if k in ("name", "region", "router")},
+            "helium": helium.summary(),
             **{name: (obj.status() if obj is not None else None) for name, obj in extras.items()},
         }
 

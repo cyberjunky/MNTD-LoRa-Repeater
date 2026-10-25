@@ -316,6 +316,8 @@
       tile("CPU temperature", status.cpu_temp_c == null ? "–" : `${n1(status.cpu_temp_c, 1)} °C`, `up ${ago(Date.now() / 1000 - status.uptime_s)}`.replace(" ago", ""), status.cpu_temp_c == null ? "unknown" : status.cpu_temp_c > 75 ? "critical" : status.cpu_temp_c > 65 ? "warning" : "good"),
     );
     if (sx) tiles.append(tile("Mesh airtime (1 h)", `${n1(sx.duty_used_pct_1h, 2)} %`, `of ${sx.duty_limit_pct} % duty cycle · relayed ${sx.counters.relayed} · sent ${sx.counters.tx}`, sx.duty_used_pct_1h > sx.duty_limit_pct * 0.8 ? "warning" : "good"));
+    const he = status.helium;
+    if (he?.enabled) tiles.append(tile("Helium hotspot", he.name || "–", `${he.router ? "router connected" : "router offline"}${he.region ? " · " + he.region : ""}${he.hnt_lifetime != null ? ` · ${n1(he.hnt_lifetime, 2)} HNT earned` : ""}`, he.router ? "good" : "critical"));
     if (tg && tg.enabled) tiles.append(tile("Telegram", tg.connected ? `@${tg.bot || "bot"}` : "offline", `in ${tg.counters.in} · out ${tg.counters.out} · posted ${tg.counters.posted}`, tg.connected ? "good" : "critical"));
   }
 

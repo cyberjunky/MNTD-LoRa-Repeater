@@ -101,6 +101,14 @@ class Helium:
     def status(self) -> dict[str, Any]:
         return self.state
 
+    def summary(self) -> dict[str, Any]:
+        """Compact view for /api/status (the Overview tile)."""
+        gw = self.state.get("gateway") or {}
+        hnt = ((self.state.get("rewards") or {}).get("tokens") or {}).get("HNT") or {}
+        return {"enabled": self.cfg.enabled, "name": (self.state.get("hotspot") or {}).get("name") or gw.get("name"),
+                "router": (gw.get("router") or {}).get("connected"), "region": gw.get("region"),
+                "hnt_lifetime": hnt.get("lifetime"), "hnt_unclaimed": hnt.get("unclaimed")}
+
     async def _loop(self) -> None:
         await asyncio.sleep(10)
         while True:
