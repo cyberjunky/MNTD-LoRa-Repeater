@@ -58,7 +58,7 @@ def test_downlink_mac_and_private_netid():
     fopts = bytes([0x02, 12, 3, 0x06])                       # LinkCheckAns(margin 12, 3 gateways), DevStatusReq
     phy = bytes([0x60, 0x91, 0x00, 0x0E, 0x00, 0x30 | len(fopts), 0x01, 0x00]) + fopts + b"\x00" * 4
     info = decode_phy(_b64(phy))
-    assert info.devaddr == "000E0091" and info.network == "private/experimental"
+    assert info.devaddr == "000E0091" and info.network == "NetID 0 (non-roaming)"
     assert info.mac == [{"cmd": "LinkCheckAns", "margin": 12, "gateways": 3}, {"cmd": "DevStatusReq"}]
     assert info.fpending == 1 and info.adr_ack_req is None and info.fport is None
 

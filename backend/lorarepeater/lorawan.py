@@ -37,8 +37,9 @@ UPLINK = {0, 2, 4, 6}
 
 # NetIDs with a public operator name. Others are shown as the raw NetID.
 NETWORKS = {
-    0x000000: "private/experimental",
-    0x000001: "private/experimental",
+    # reserved for experimental and non-roaming networks: private servers, but operators use them too
+    0x000000: "NetID 0 (non-roaming)",
+    0x000001: "NetID 1 (non-roaming)",
     0x000013: "The Things Network",
     0x00003C: "Helium",
     0x60002D: "Helium",
