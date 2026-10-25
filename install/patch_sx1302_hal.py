@@ -1,20 +1,27 @@
 #!/usr/bin/env python3
-"""Patch Semtech sx1302_hal V2.1.0 for the MNTD Goldspot / RAK Hotspot Miner V2.
+"""Patch Semtech sx1302_hal V2.1.0 for the MNTD Goldspot (RAK2287, no temperature sensor).
 
-Three changes, all idempotent and verified against the V2.1.0 sources:
+Expects the pristine V2.1.0 sources (install.sh resets the checkout before patching).
 
-1. Temperature sensor optional (libloragw/src/loragw_hal.c)
-   The RAK HAT has no STTS751. Upstream aborts in lgw_start() and later fails every
-   lgw_receive()/lgw_send() because lgw_get_temperature() errors. We report 25 C instead.
+1. No temperature sensor (libloragw/src/loragw_hal.c)
+   The RAK2287 has no STTS751. Upstream probes for one, aborts lgw_start() without it, and
+   needs a reading for RSSI temperature compensation on every receive. The probe and the
+   compensation are removed: RSSI gets the board's calibrated offset only, and no
+   temperature is ever invented. lgw_stop() no longer closes the sensor fd that was never
+   opened.
 
-2. Custom sync word on the LoRa *service* modem (libloragw/src/loragw_sx1302.c)
+2. No temperature in the packet forwarder (packet_forwarder/src/lora_pkt_fwd.c)
+   The status printout and the "stat" report sent to the network servers drop the
+   temperature line and the "temp" field.
+
+3. Custom sync word on the LoRa *service* modem (libloragw/src/loragw_sx1302.c)
    Read from the environment variable LGW_SERVICE_SYNCWORD (e.g. "0x2B" for Meshtastic).
    The eight multi-SF channels keep the LoRaWAN word, so LoRaWAN keeps working on
    channels 0-7 while the single 250 kHz service channel listens to Meshtastic.
    Sync word -> SX1302 "peak position" registers: high nibble*2, low nibble*2
    (0x34 -> 6/8 and 0x12 -> 2/4 are the stock values; 0x2B -> 4/22).
 
-3. Same sync word for transmissions at the service bandwidth (loragw_sx1302.c)
+4. Same sync word for transmissions at the service bandwidth (loragw_sx1302.c)
    Controlled by LGW_SERVICE_SYNCWORD_TX_BW (kHz, default 250, 0 disables). EU868 LoRaWAN
    downlinks are always 125 kHz, so a 250 kHz transmission is by definition a Meshtastic
    frame and gets the Meshtastic word; everything else keeps the LoRaWAN word.
@@ -86,42 +93,62 @@ def fail(what: str) -> int:
     return 1
 
 
-def patch_hal_c(path: Path) -> int:
+HAL_EDITS = [  # (what, old: str | regex, new, expected matches)
+    ("temperature sensor probe in lgw_start",
+     re.compile(r"        /\* Find the temperature sensor on the known supported ports \*/\n.*?"
+                r'            printf\("ERROR: no temperature sensor found\.\\n"\);\n'
+                r"            return LGW_HAL_ERROR;\n        \}\n", re.S),
+     "        /* " + MARK + ": the RAK2287 has no temperature sensor; none is probed */\n", 1),
+    ("temperature variables in lgw_receive",
+     "    float current_temperature = 0.0, rssi_temperature_offset = 0.0;\n", "", 1),
+    ("temperature read in lgw_receive",
+     re.compile(r"    /\* Apply RSSI temperature compensation \*/\n    res = lgw_get_temperature\(&current_temperature\);\n"
+                r"    if \(res != LGW_I2C_SUCCESS\) \{\n.*?\n    \}\n\n", re.S),
+     "    /* " + MARK + ": no temperature sensor, so no RSSI temperature compensation */\n\n", 1),
+    ("temperature compensation in lgw_receive",
+     re.compile(r"\n        rssi_temperature_offset = sx1302_rssi_get_temperature_offset\(.*?\n"
+                r"        DEBUG_PRINTF\(\"INFO: RSSI temperature offset applied:[^\n]*\n", re.S),
+     "\n", 1),
+    ("temperature sensor close in lgw_stop",
+     "        x = i2c_linuxdev_close(ts_fd);\n",
+     "        x = (ts_fd >= 0) ? i2c_linuxdev_close(ts_fd) : 0; /* " + MARK + ": never opened */\n", 1),
+]
+
+PKT_FWD_EDITS = [
+    ("temperature variable", "    float temperature;\n", "    /* " + MARK + ": no concentrator temperature */\n", 1),
+    ("temperature printout",
+     re.compile(r"        pthread_mutex_lock\(&mx_concent\);\n        i = lgw_get_temperature\(&temperature\);\n"
+                r".*?printf\(\"### Concentrator temperature: %\.0f C ###\\n\", temperature\);\n        \}\n", re.S),
+     "", 1),
+    ("temp field in the stat reports", ',\\"temp\\":%.1f}"', '}"', 2),
+    ("temperature argument of the stat reports", "cp_nb_tx_ok, temperature);", "cp_nb_tx_ok);", 2),
+]
+
+
+def _apply(path: Path, edits: list) -> int:
     src = path.read_text(encoding="utf-8")
     if MARK in src:
         print("already patched:", path)
         return 0
-    m = re.search(r"^static uint8_t ts_addr = 0xFF;.*$", src, re.M)
-    if not m:
-        return fail("ts_addr declaration in loragw_hal.c")
-    src = src[: m.end()] + f"\nstatic bool ts_fake = false; /* {MARK}: no STTS751 on the MNTD/RAK HAT */" + src[m.end():]
-
-    # replacement callables: re.sub would otherwise interpret the "\n" inside the C string
-    warn = 'printf("WARNING: no temperature sensor found, reporting 25 C [' + MARK + ']\\n"); ts_fake = true;'
-    src, n = re.subn(
-        r'printf\("ERROR: no temperature sensor found\.\\n"\);\s*return LGW_HAL_ERROR;',
-        lambda _m: warn,
-        src,
-    )
-    if n != 1:
-        return fail("no-sensor error branch in lgw_start")
-
-    fake = "\n    if (ts_fake) { *temperature = 25.0f; return LGW_HAL_SUCCESS; } /* " + MARK + " */"
-    src, n = re.subn(
-        r"int lgw_get_temperature\(float\s*\*\s*temperature\)\s*\{",
-        lambda m: m.group(0) + fake,
-        src,
-    )
-    if n != 1:
-        return fail("lgw_get_temperature definition")
-    # lgw_stop() closes the sensor fd unconditionally; with no sensor it is -1 and the close fails
-    old = "x = i2c_linuxdev_close(ts_fd);"
-    if old not in src:
-        return fail("temperature sensor close in lgw_stop")
-    src = src.replace(old, "x = (ts_fd >= 0) ? i2c_linuxdev_close(ts_fd) : 0; /* " + MARK + ": no sensor */", 1)
-    path.write_text(src, encoding="utf-8")
+    for what, old, new, count in edits:
+        if isinstance(old, re.Pattern):
+            src, n = old.subn(lambda _m, new=new: new, src)
+        else:
+            n = src.count(old)
+            src = src.replace(old, new)
+        if n != count:
+            return fail(what)
+    path.write_text(src, encoding="utf-8", newline="\n")
     print("patched:", path)
     return 0
+
+
+def patch_hal_c(path: Path) -> int:
+    return _apply(path, HAL_EDITS)
+
+
+def patch_pkt_fwd_c(path: Path) -> int:
+    return _apply(path, PKT_FWD_EDITS)
 
 
 def patch_sx1302_c(path: Path) -> int:
@@ -144,7 +171,7 @@ def patch_sx1302_c(path: Path) -> int:
     if not m:
         return fail("TX syncword block in sx1302_send")
     src = src[: m.start()] + TX_NEW.format(ind=m.group("ind")) + src[m.end():]
-    path.write_text(src, encoding="utf-8")
+    path.write_text(src, encoding="utf-8", newline="\n")
     print("patched:", path)
     return 0
 
@@ -156,6 +183,7 @@ def main() -> int:
     root = Path(sys.argv[1])
     rc = patch_hal_c(root / "libloragw" / "src" / "loragw_hal.c")
     rc |= patch_sx1302_c(root / "libloragw" / "src" / "loragw_sx1302.c")
+    rc |= patch_pkt_fwd_c(root / "packet_forwarder" / "src" / "lora_pkt_fwd.c")
     return rc
 
 

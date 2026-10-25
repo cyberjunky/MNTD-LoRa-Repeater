@@ -49,6 +49,7 @@ log "3/6 Semtech sx1302_hal $HAL_TAG (packet forwarder) in $HAL_DIR"
 if [ ! -d "$HAL_DIR/.git" ]; then
     git clone --depth 1 --branch "$HAL_TAG" https://github.com/Lora-net/sx1302_hal.git "$HAL_DIR"
 fi
+git -C "$HAL_DIR" checkout -q -- .        # pristine V2.1.0 sources: the patch always applies fresh
 python3 "$REPO_DIR/install/patch_sx1302_hal.py" "$HAL_DIR"
 make -C "$HAL_DIR" -j"$(nproc)" >/tmp/sx1302_hal.build.log 2>&1 || { tail -30 /tmp/sx1302_hal.build.log; die "sx1302_hal build failed"; }
 install -m 755 "$REPO_DIR/install/bin/reset_lgw.sh" "$HAL_DIR/packet_forwarder/reset_lgw.sh"

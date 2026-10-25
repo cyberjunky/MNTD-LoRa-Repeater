@@ -255,6 +255,7 @@
     { h: "CRC", f: (r) => r.direction === "down" ? "" : r.stat === 1 ? "ok" : r.stat === -1 ? '<span class="badge bad">bad</span>' : "none" },
     { h: "Forwarded", f: (r) => (Array.isArray(r.forwarded) ? r.forwarded : []).join(", ") || (r.upstream || "") },
   ];
+  const OV_LW_COLS = LW_COLS.filter((c) => !["Vendor", "CR", "Bytes", "Airtime", "MAC", "CRC", "Forwarded"].includes(c.h));  // compact overview
   const nodeName = (n) => n ? (n.long_name || n.short_name || hex(n.num)) : null;
   let nodeMap = {};
   const MESH_COLS = [
@@ -325,7 +326,7 @@
     $("#mesh-range").textContent = `last ${h} h · ${mesh.totals.total || 0} total`;
     stackedBars($("#chart-lw-time"), pivot(lw.per_bucket, lw.bucket_s, h, "direction", ["up", "down"]), ["up", "down"], ["uplinks", "downlinks"]);
     stackedBars($("#chart-mesh-time"), fill(mesh.per_bucket.map((b) => ({ t: b.t, heard: b.n - (b.tx || 0), relayed: b.relayed_by_us || 0, tx: b.tx || 0 })), mesh.bucket_s, h, ["heard", "relayed", "tx"]), ["heard", "relayed", "tx"], ["heard", "relayed by us", "sent by us"]);
-    table($("#ov-lw"), LW_COLS.slice(0, 11), lwp, { pageSize: 12 });
+    table($("#ov-lw"), OV_LW_COLS, lwp, { pageSize: 12 });
     table($("#ov-mesh"), MESH_COLS.slice(0, 9).concat(MESH_COLS.slice(-1)), mp, { pageSize: 12 });
   }
 
@@ -575,7 +576,7 @@
     ws.onclose = () => { $("#live").classList.remove("on"); setTimeout(connectWs, 5000); };
     ws.onmessage = (e) => {
       const { kind, row } = JSON.parse(e.data);
-      if (kind === "lorawan_packets") { if (tab === "overview") prepend($("#ov-lw"), LW_COLS.slice(0, 11), row); if (tab === "lorawan") prepend($("#lw-log"), LW_COLS, row); }
+      if (kind === "lorawan_packets") { if (tab === "overview") prepend($("#ov-lw"), OV_LW_COLS, row); if (tab === "lorawan") prepend($("#lw-log"), LW_COLS, row); }
       if (kind === "mesh_packets") { if (tab === "overview") prepend($("#ov-mesh"), MESH_COLS.slice(0, 9).concat(MESH_COLS.slice(-1)), row); if (tab === "mesh") { prepend($("#mesh-log"), MESH_COLS, row); if (row.text) { const b = $("#mesh-msgs"); b.querySelector(".empty")?.remove(); b.prepend(msgEl(row)); } } }
       if (kind === "events" && tab === "events") prepend($("#events"), EVENT_COLS, row);
       rawFeed(kind, row);

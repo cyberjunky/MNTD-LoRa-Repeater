@@ -122,8 +122,8 @@ The same from a shell: `sudo -u lorarepeater /opt/lorarepeater/venv/bin/lorarepe
 - **The SX1302 does not answer**: check `ls /dev/spidev0.0`, that `dtparam=spi=on`
   is in `config.txt` and that you rebooted. Power-cycle the box; the SX1302 sometimes needs a
   cold start.
-- **Forwarder exits with "failed to configure temperature sensor"**: the HAL patch did not
-  apply; run `python3 install/patch_sx1302_hal.py /opt/sx1302_hal && make -C /opt/sx1302_hal`.
+- **Forwarder exits with "no temperature sensor found"**: the HAL patch did not apply; re-run
+  the installer (it resets `/opt/sx1302_hal`, patches and rebuilds).
 - **GPS**: there is none. The HAT does not connect the RAK2287's GNSS (I2C, UART and the
   antenna u.FL are all unconnected). Set `meshsx.position` for the node's announced location.
 - **No Meshtastic traffic**: the Meshtastic tab's Channels table and the forwarder log (rxpk at

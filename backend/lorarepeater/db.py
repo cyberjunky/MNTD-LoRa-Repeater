@@ -68,8 +68,7 @@ CREATE TABLE IF NOT EXISTS gateway_stats (
     ts    REAL NOT NULL,
     gateway_eui TEXT,
     time  TEXT, lati REAL, long REAL, alti REAL,
-    rxnb INTEGER, rxok INTEGER, rxfw INTEGER, ackr REAL, dwnb INTEGER, txnb INTEGER,
-    temp  REAL
+    rxnb INTEGER, rxok INTEGER, rxfw INTEGER, ackr REAL, dwnb INTEGER, txnb INTEGER
 );
 CREATE INDEX IF NOT EXISTS ix_gwstats_ts ON gateway_stats(ts);
 

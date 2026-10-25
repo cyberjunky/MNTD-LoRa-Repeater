@@ -28,8 +28,7 @@ UNITS = ["lora-pkt-fwd", "lorarepeater", "systemd-timesyncd"]
 RESTARTABLE = list(UNITS)
 LOG_SOURCES = {**{u: ["-u", u] for u in UNITS}, "upstreams": ["-u", "lorarepeater"], "kernel": ["-k"], "all": []}
 SOURCE_FILTER = {"upstreams": r"lorarepeater\.gwmp: upstream"}   # views on another unit's journal
-NOISE = ("syncword not found", "### [GPS] ###", "# GPS sync is disabled",   # no GPS on this box
-         "### Concentrator temperature")   # fixed 25 C from the HAL patch: the RAK2287 has no sensor
+NOISE = ("syncword not found", "### [GPS] ###", "# GPS sync is disabled")   # no GPS on this box
 SECRET_KEYS = ("token", "psk", "password", "secret", "key")
 BUTTON_PIN = 7
 FORWARDER_ENV = Path("/etc/default/lora-pkt-fwd")

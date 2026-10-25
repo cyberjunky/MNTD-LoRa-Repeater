@@ -49,8 +49,9 @@ line is high. The packet forwarder expects `reset_lgw.sh` in its working directo
 ## LoRa configuration
 
 The installer starts from Semtech's own EU868 profile in `sx1302_hal` and adds the RAK2287's
-TX gain table (power amplifier calibration). RSSI offset (-215.4 dB) and temperature
-compensation in Semtech's profile already match the module. Radio 0 (TX) and radio 1 are
+TX gain table (power amplifier calibration). The RSSI offset (-215.4 dB) in Semtech's profile
+matches the module. The RAK2287 has no temperature sensor, so RSSI is not temperature
+compensated and no concentrator temperature is reported. Radio 0 (TX) and radio 1 are
 regrouped so the eight LoRaWAN channels and the Meshtastic service channel fit (see
 [meshtastic-on-sx1302.md](meshtastic-on-sx1302.md)).
 

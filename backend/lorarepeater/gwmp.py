@@ -204,7 +204,7 @@ class GwmpMux:
                 "gateway_eui": eui.hex().upper(),
                 "time": st.get("time"), "lati": st.get("lati"), "long": st.get("long"), "alti": st.get("alti"),
                 "rxnb": st.get("rxnb"), "rxok": st.get("rxok"), "rxfw": st.get("rxfw"), "ackr": st.get("ackr"),
-                "dwnb": st.get("dwnb"), "txnb": st.get("txnb"), "temp": st.get("temp"),
+                "dwnb": st.get("dwnb"), "txnb": st.get("txnb"),
             })
         if "rxpk" in msg:
             if kept:

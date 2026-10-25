@@ -53,10 +53,10 @@ once the SX1302 node worked on the hardware.
 
 ### LoRaWAN path
 
-- `lora_pkt_fwd` is Semtech's reference forwarder (sx1302_hal V2.1.0) with the EU868 config
-  from the original firmware (RAK's RSSI calibration kept, channels regrouped so the service
-  channel can sit at 869.525 MHz) and a small HAL patch: no abort without the STTS751
-  temperature sensor, and an environment-selected sync word for the service channel
+- `lora_pkt_fwd` is Semtech's reference forwarder (sx1302_hal V2.1.0) with Semtech's EU868
+  profile plus the RAK2287 TX gain table (channels regrouped so the service channel can sit at
+  869.525 MHz) and a small HAL patch: no temperature sensor handling (the RAK2287 has none),
+  and an environment-selected sync word for the service channel
   ([install/patch_sx1302_hal.py](../install/patch_sx1302_hal.py)).
 - The forwarder talks the Semtech UDP protocol to `lorarepeater` on `127.0.0.1:1730`.
   `gwmp.py` acknowledges, decodes the PHYPayload header (type, DevAddr, FCnt, FPort,

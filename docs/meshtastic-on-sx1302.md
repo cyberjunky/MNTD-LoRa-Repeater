@@ -17,7 +17,8 @@ diff in [install/sx1302_hal-V2.1.0-mntd.patch](../install/sx1302_hal-V2.1.0-mntd
 2. Transmissions at the service bandwidth (`LGW_SERVICE_SYNCWORD_TX_BW=250`) use the same word.
    EU868 LoRaWAN downlinks are always 125 kHz, so a 250 kHz transmission is by definition a
    Meshtastic frame.
-3. The missing temperature sensor on the RAK HAT no longer aborts the HAL.
+3. The RAK2287 has no temperature sensor: the HAL no longer probes for one or applies RSSI
+   temperature compensation, and the forwarder reports no temperature.
 
 The packet forwarder's EU868 configuration is regrouped so the service channel can sit at
 **869.525 MHz, SF11, 250 kHz** (EU_868 LongFast) within the SX1302's ±800 kHz per-radio window:
@@ -63,7 +64,7 @@ to a chat or channel that should receive every text heard on the mesh. Commands:
 ## Bench verification (first boot)
 
 1. `journalctl -u lora-pkt-fwd -f` must show `configuring LoRa (Service) SF11 with custom
-   syncword, peaks 4/22 [lorarepeater]` and `no temperature sensor found, reporting 25 C`.
+   syncword, peaks 4/22 [lorarepeater]` and `concentrator started`.
 2. With a phone or any Meshtastic node on EU_868 LongFast next to the box, send a text. The
    GUI's Meshtastic tab (or `curl localhost:8080/api/mesh/packets`) must show it decoded.
 3. The node should then show a second copy of its own message relayed by `MNTD` (hop count
