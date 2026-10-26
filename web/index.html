@@ -4,14 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MNTD LoRa Repeater</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="/static/app.css">
 <link rel="icon" type="image/svg+xml" href="/static/icon.svg">
 </head>
 <body>
 <header class="top">
-<div class="top-inner">
-  <div class="brand"><img class="logo" src="/static/icon.svg" alt=""><h1 id="title">MNTD LoRa Repeater</h1><span class="dot" id="health-dot" title="overall health"></span></div>
-  <nav class="tabs" id="tabs">
+  <div class="brand"><img class="logo" src="/static/icon.svg" alt=""><h1 id="title">MNTD LoRa Repeater</h1></div>
+  <span class="hstat" id="hstat" title="overall health"><i class="dot"></i>CONNECTING</span>
+  <nav class="seg" id="tabs">
     <button data-tab="overview" class="active">Overview</button>
     <button data-tab="lorawan">LoRaWAN</button>
     <button data-tab="mesh">Meshtastic</button>
@@ -22,19 +25,12 @@
     <button data-tab="diag">Diagnostics</button>
     <button data-tab="about">About</button>
   </nav>
-  <div class="controls">
-    <label>Range
-      <select id="range">
-        <option value="6">6 h</option>
-        <option value="24" selected>24 h</option>
-        <option value="168">7 d</option>
-        <option value="720">30 d</option>
-      </select>
-    </label>
-    <button id="theme" title="Toggle light/dark">◐</button>
-    <span class="live" id="live">● live</span>
+  <span class="spacer"></span>
+  <div class="seg mono" id="range" title="time range">
+    <button data-h="6">6H</button><button data-h="24">24H</button><button data-h="168">7D</button><button data-h="720">30D</button>
   </div>
-</div>
+  <span class="clock" id="clock"></span>
+  <button class="icon-btn" id="theme" title="Toggle light/dark">◐</button>
 </header>
 
 <main>
@@ -117,7 +113,7 @@
     <div class="tiles" id="he-tiles"></div>
     <div class="card" id="he-note" hidden></div>
     <div class="card"><div class="row"><h3>Traffic for Helium</h3><span class="muted" id="he-traffic-info"></span></div>
-      <p class="muted" style="margin:0 0 10px;font-size:12px">Helium buys packets for its own devices and for roaming partners. Which uplinks the packet router bought is not visible on the box; the downlinks it requested and the rewards the oracle added are, and are shown here.</p>
+      <p class="note">Helium buys packets for its own devices and for roaming partners. Which uplinks the packet router bought is not visible on the box; the downlinks it requested and the rewards the oracle added are, and are shown here.</p>
       <div class="grid2"><div><h3>Downlinks requested by Helium</h3><table class="tbl compact" id="he-downs"></table></div>
       <div><h3>Devices Helium served <span class="muted">(Helium addresses, or a Helium downlink went to them)</span></h3><table class="tbl compact" id="he-traffic"></table></div></div></div>
     <div class="card"><div class="row"><h3>Hotspots nearby</h3><span class="muted" id="he-map-info"></span></div><div class="map" id="he-map"></div></div>
@@ -128,7 +124,7 @@
     <div class="grid2">
       <div class="card"><h3>Hotspot <span class="muted">(on-chain NFT)</span></h3><table class="tbl" id="he-hotspot"></table></div>
       <div class="card"><h3>Rewards</h3><table class="tbl" id="he-rewards"></table>
-        <h3 style="margin-top:16px">Owner wallet</h3><table class="tbl" id="he-wallet"></table></div>
+        <h3 style="margin-top:18px">Owner wallet</h3><table class="tbl" id="he-wallet"></table></div>
     </div>
     <div class="grid2">
       <div class="card"><h3>Claim history</h3><table class="tbl compact" id="he-claims"></table></div>
@@ -144,75 +140,73 @@
 
   <!-- ============================ ABOUT ============================== -->
   <section id="tab-about" class="tab">
-    <div class="about">
-      <div class="card about-head">
-        <img src="/static/icon.svg" alt="" width="72" height="72">
-        <div>
-          <h2>MNTD LoRa Repeater</h2>
-          <p class="muted" id="about-version">LoRaWAN gateway and Meshtastic repeater for the MNTD Goldspot</p>
-        </div>
+    <div class="card about-head">
+      <img src="/static/icon.svg" alt="" width="72" height="72">
+      <div>
+        <h2>MNTD LoRa Repeater</h2>
+        <p class="muted" id="about-version">LoRaWAN gateway and Meshtastic repeater for the MNTD Goldspot</p>
       </div>
+    </div>
 
+    <div class="card prose">
+      <h3>How this started</h3>
+      <p>I had an MNTD Goldspot sitting on a shelf. It was bought as a Helium hotspot, and once that
+        project wound down it did not earn anything any more. It is a well-made box though: a
+        Raspberry Pi 4 and a RAKwireless concentrator in a solid gold aluminium case, with a proper
+        antenna. Too good to throw away.</p>
+      <p>So I wanted to give it a second life as something useful for the people around me: a
+        LoRaWAN gateway for The Things Network and other networks, and a Meshtastic repeater, with a
+        clear web page showing everything it hears, relays and sends, all stored in a database.</p>
+      <p>Along the way the hardware had a few surprises. The concentrator reset turned out to be on
+        GPIO 25, the GPS module on the concentrator is not wired to the Pi on this board, and the LED
+        driver chip is not even fitted, so the front light now shows the Pi's own LEDs. Meshtastic
+        normally needs its own radio, but a small patch to Semtech's driver lets the same SX1302
+        listen to Meshtastic on its spare channel while the other eight channels keep serving
+        LoRaWAN: one radio, one antenna, both networks.</p>
+      <p>The first real traffic came in when I moved the box upstairs and connected the antenna:
+        dozens of LoRaWAN devices in the neighbourhood within minutes. A little later the gateway
+        was registered with TTN and sent its first downlinks. Now it runs on a stock Raspberry Pi OS
+        card with one install script, and nothing of the old firmware.</p>
+      <p>And for old times' sake it is back on Helium too. The hotspot's identity was still in its
+        secure element, so Helium's own gateway software picks it up as the same hotspot. The Helium
+        tab finally shows what I never got to see properly: its record on the chain, what it earned,
+        every claim, and the wallet it paid into.</p>
+      <p class="muted">cyberjunky</p>
+    </div>
+
+    <div class="grid2">
       <div class="card prose">
-        <h3>How this started</h3>
-        <p>I had an MNTD Goldspot sitting on a shelf. It was bought as a Helium hotspot, and once that
-          project wound down it did not earn anything any more. It is a well-made box though: a
-          Raspberry Pi 4 and a RAKwireless concentrator in a solid gold aluminium case, with a proper
-          antenna. Too good to throw away.</p>
-        <p>So I wanted to give it a second life as something useful for the people around me: a
-          LoRaWAN gateway for The Things Network and other networks, and a Meshtastic repeater, with a
-          clear web page showing everything it hears, relays and sends, all stored in a database.</p>
-        <p>Along the way the hardware had a few surprises. The concentrator reset turned out to be on
-          GPIO 25, the GPS module on the concentrator is not wired to the Pi on this board, and the LED
-          driver chip is not even fitted, so the front light now shows the Pi's own LEDs. Meshtastic
-          normally needs its own radio, but a small patch to Semtech's driver lets the same SX1302
-          listen to Meshtastic on its spare channel while the other eight channels keep serving
-          LoRaWAN: one radio, one antenna, both networks.</p>
-        <p>The first real traffic came in when I moved the box upstairs and connected the antenna:
-          dozens of LoRaWAN devices in the neighbourhood within minutes. A little later the gateway
-          was registered with TTN and sent its first downlinks. Now it runs on a stock Raspberry Pi OS
-          card with one install script, and nothing of the old firmware.</p>
-        <p>And for old times' sake it is back on Helium too. The hotspot's identity was still in its
-          secure element, so Helium's own gateway software picks it up as the same hotspot. The Helium
-          tab finally shows what I never got to see properly: its record on the chain, what it earned,
-          every claim, and the wallet it paid into.</p>
-        <p class="muted">cyberjunky</p>
+        <h3>Links</h3>
+        <ul class="links">
+          <li><a href="https://github.com/cyberjunky/MNTD-LoRa-Repeater" target="_blank" rel="noopener">Source code on GitHub</a></li>
+          <li><a href="https://github.com/cyberjunky/MNTD-LoRa-Repeater/issues" target="_blank" rel="noopener">Issue tracker</a>: bugs, questions and ideas</li>
+          <li><a href="https://github.com/cyberjunky/MNTD-LoRa-Repeater/blob/master/docs/install.md" target="_blank" rel="noopener">Installation guide</a></li>
+          <li><a href="https://github.com/cyberjunky/MNTD-LoRa-Repeater/blob/master/docs/hardware.md" target="_blank" rel="noopener">Hardware notes</a></li>
+          <li><a href="https://github.com/cyberjunky/MNTD-LoRa-Repeater/blob/master/docs/meshtastic-on-sx1302.md" target="_blank" rel="noopener">Meshtastic on the SX1302</a></li>
+          <li><a href="https://github.com/cyberjunky/MNTD-LoRa-Repeater/blob/master/LICENSE" target="_blank" rel="noopener">MIT licence</a></li>
+        </ul>
       </div>
-
-      <div class="grid2">
-        <div class="card prose">
-          <h3>Links</h3>
-          <ul class="links">
-            <li><a href="https://github.com/cyberjunky/MNTD-LoRa-Repeater" target="_blank" rel="noopener">Source code on GitHub</a></li>
-            <li><a href="https://github.com/cyberjunky/MNTD-LoRa-Repeater/issues" target="_blank" rel="noopener">Issue tracker</a>: bugs, questions and ideas</li>
-            <li><a href="https://github.com/cyberjunky/MNTD-LoRa-Repeater/blob/master/docs/install.md" target="_blank" rel="noopener">Installation guide</a></li>
-            <li><a href="https://github.com/cyberjunky/MNTD-LoRa-Repeater/blob/master/docs/hardware.md" target="_blank" rel="noopener">Hardware notes</a></li>
-            <li><a href="https://github.com/cyberjunky/MNTD-LoRa-Repeater/blob/master/docs/meshtastic-on-sx1302.md" target="_blank" rel="noopener">Meshtastic on the SX1302</a></li>
-            <li><a href="https://github.com/cyberjunky/MNTD-LoRa-Repeater/blob/master/LICENSE" target="_blank" rel="noopener">MIT licence</a></li>
-          </ul>
-        </div>
-        <div class="card prose">
-          <h3>Built on</h3>
-          <ul class="links">
-            <li>The hardware by <b>MNTD</b> and <b>RAKwireless</b>; this project is independent and not affiliated with either</li>
-            <li><a href="https://github.com/Lora-net/sx1302_hal" target="_blank" rel="noopener">Semtech sx1302_hal</a>, the concentrator driver and packet forwarder</li>
-            <li><a href="https://meshtastic.org" target="_blank" rel="noopener">Meshtastic</a> and its protocol definitions</li>
-            <li><a href="https://www.thethingsnetwork.org" target="_blank" rel="noopener">The Things Network</a></li>
-            <li><a href="https://www.helium.com" target="_blank" rel="noopener">Helium</a> and its open-source <a href="https://github.com/helium/gateway-rs" target="_blank" rel="noopener">gateway-rs</a>; reward data from the Helium oracles and Solana</li>
-            <li>The IEEE registration authority, for device vendor names</li>
-            <li><a href="https://www.raspberrypi.com/software/" target="_blank" rel="noopener">Raspberry Pi OS</a>, FastAPI and SQLite</li>
-          </ul>
-        </div>
-      </div>
-
       <div class="card prose">
-        <h3>Support this project</h3>
-        <p>This is a spare-time project. If it gave your old hotspot a second life, or you just like
-          it, you can support it by <a href="https://github.com/sponsors/cyberjunky" target="_blank" rel="noopener">sponsoring on GitHub</a>
-          or with a <a href="https://www.paypal.me/cyberjunkynl/" target="_blank" rel="noopener">donation via PayPal</a>.
-          A star on <a href="https://github.com/cyberjunky/MNTD-LoRa-Repeater" target="_blank" rel="noopener">GitHub</a>,
-          a bug report or a pull request helps just as much. Thank you!</p>
+        <h3>Built on</h3>
+        <ul class="links">
+          <li>The hardware by <b>MNTD</b> and <b>RAKwireless</b>; this project is independent and not affiliated with either</li>
+          <li><a href="https://github.com/Lora-net/sx1302_hal" target="_blank" rel="noopener">Semtech sx1302_hal</a>, the concentrator driver and packet forwarder</li>
+          <li><a href="https://meshtastic.org" target="_blank" rel="noopener">Meshtastic</a> and its protocol definitions</li>
+          <li><a href="https://www.thethingsnetwork.org" target="_blank" rel="noopener">The Things Network</a></li>
+          <li><a href="https://www.helium.com" target="_blank" rel="noopener">Helium</a> and its open-source <a href="https://github.com/helium/gateway-rs" target="_blank" rel="noopener">gateway-rs</a>; reward data from the Helium oracles and Solana</li>
+          <li>The IEEE registration authority, for device vendor names</li>
+          <li><a href="https://www.raspberrypi.com/software/" target="_blank" rel="noopener">Raspberry Pi OS</a>, FastAPI and SQLite</li>
+        </ul>
       </div>
+    </div>
+
+    <div class="card prose">
+      <h3>Support this project</h3>
+      <p>This is a spare-time project. If it gave your old hotspot a second life, or you just like
+        it, you can support it by <a href="https://github.com/sponsors/cyberjunky" target="_blank" rel="noopener">sponsoring on GitHub</a>
+        or with a <a href="https://www.paypal.me/cyberjunkynl/" target="_blank" rel="noopener">donation via PayPal</a>.
+        A star on <a href="https://github.com/cyberjunky/MNTD-LoRa-Repeater" target="_blank" rel="noopener">GitHub</a>,
+        a bug report or a pull request helps just as much. Thank you!</p>
     </div>
   </section>
 
@@ -255,6 +249,14 @@
     </div>
   </section>
 </main>
+<footer class="bar">
+  <span class="live" id="live"><i class="dot"></i>LIVE FEED</span>
+  <span id="foot-fwd"></span>
+  <span id="foot-db"></span>
+  <span id="foot-cpu"></span>
+  <span id="foot-up"></span>
+  <span class="right" id="foot-ver"></span>
+</footer>
 <div id="tooltip" class="tooltip" hidden></div>
 <script src="/static/app.js"></script>
 </body>

@@ -40,8 +40,19 @@
     refreshTab(name);
   };
   $("#tabs").onclick = (e) => e.target.dataset.tab && showTab(e.target.dataset.tab);
-  const hours = () => Number($("#range").value);
-  $("#range").onchange = () => refreshAll();
+  let rangeH = 24;
+  try { rangeH = Number(localStorage.getItem("range")) || rangeH; } catch {}
+  const markRange = () => document.querySelectorAll("#range button").forEach((b) => b.classList.toggle("active", Number(b.dataset.h) === rangeH));
+  markRange();
+  const hours = () => rangeH;
+  $("#range").onclick = (e) => {
+    if (!e.target.dataset.h) return;
+    rangeH = Number(e.target.dataset.h); markRange();
+    try { localStorage.setItem("range", rangeH); } catch {}
+    refreshAll();
+  };
+  const tickClock = () => ($("#clock").textContent = new Date().toLocaleTimeString([], { hour12: false }));
+  tickClock(); setInterval(tickClock, 1000);
 
   // ---------------------------------------------------------------- tooltip
   const tip = $("#tooltip");
@@ -305,9 +316,15 @@
     const fwdOk = g.forwarder_seen_s_ago != null && g.forwarder_seen_s_ago < 120;
     const upOk = !g.upstreams.length || g.upstreams.some((u) => u.alive);
     const meshTile = sx
-      ? tile("Meshtastic node", `${sx.node_id}`, `${sx.long_name} · ${sx.role} · ${sx.freq_mhz} MHz ${sx.datr}${sx.last_rx_s_ago != null ? ` · rx ${sx.last_rx_s_ago}s ago` : ""}`, fwdOk ? "good" : "critical")
+      ? tile("Meshtastic node", `${sx.node_id}`, `${sx.long_name} · ${sx.role} · ${sx.freq_mhz} MHz ${sx.datr}${sx.last_rx_s_ago != null ? ` · rx ${ago(Date.now() / 1000 - sx.last_rx_s_ago)}` : ""}`, fwdOk ? "good" : "critical")
       : tile("Meshtastic node", "disabled", "meshsx.enabled in config.yaml", "unknown");
-    $("#health-dot").className = "dot " + (!fwdOk ? "critical" : !upOk ? "warning" : "good");
+    const [health, healthText] = !fwdOk ? ["critical", "FORWARDER DOWN"] : !upOk ? ["warning", "UPSTREAM DOWN"] : ["good", "ONLINE"];
+    $("#hstat").innerHTML = `<i class="dot ${health}"></i>${healthText}`;
+    $("#foot-fwd").innerHTML = `FWD <b>${g.forwarder_seen_s_ago == null ? "never" : `${g.forwarder_seen_s_ago}s ago`}</b>`;
+    $("#foot-db").innerHTML = `DB <b>${((status.db.lorawan || 0) + (status.db.mesh || 0)).toLocaleString()}</b> packets`;
+    $("#foot-cpu").innerHTML = `CPU <b>${n1(status.cpu_temp_c, 1)} °C</b>`;
+    $("#foot-up").innerHTML = `UP <b>${ago(Date.now() / 1000 - status.uptime_s).replace(" ago", "")}</b>`;
+    $("#foot-ver").textContent = `v${status.version}`;
     const tiles = $("#tiles"); tiles.innerHTML = "";
     tiles.append(
       tile("Packet forwarder", fwdOk ? "running" : "no data", g.forwarder_seen_s_ago == null ? "never seen" : `last seen ${g.forwarder_seen_s_ago}s ago · EUI ${g.gateway_eui || "?"}`, fwdOk ? "good" : "critical"),
