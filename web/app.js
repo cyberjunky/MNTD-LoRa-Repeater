@@ -493,14 +493,20 @@
 
   async function refreshHelium() {
     const [s, ups, tr] = await Promise.all([api("/api/helium"), api("/api/lorawan/upstreams"), api(`/api/helium/traffic?hours=${hours()}`)]);
-    const tt = tr.totals || {};
-    $("#he-traffic-info").textContent = `last ${tr.hours} h · ${(tt.offered || 0).toLocaleString()} uplinks offered to Helium · ${tt.helium_up || 0} from Helium devices · ${tt.helium_down || 0} Helium downlinks`;
+    const he_ = tr.earned?.HNT || {}, eurPrice = s.price?.HNT?.eur;
+    $("#he-traffic-info").textContent = `last ${tr.hours} h · ${(tr.offered || 0).toLocaleString()} uplinks offered · ${tr.downlinks.length} downlinks requested (${tr.joins} join accepts)${tr.netids.length ? ` · partner NetIDs ${tr.netids.join(", ")}` : ""} · earned ${he_.amount == null ? "–" : `${fmtAmt(he_.amount, 6)} HNT${eurPrice ? ` ≈ € ${fmtAmt(he_.amount * eurPrice, 4)}` : ""}`}${he_.since ? ` since ${fmtTs(he_.since)}` : ""}`;
+    table($("#he-downs"), [
+      { h: "Time", f: (r) => fmtTs(r.ts) }, { h: "Type", f: (r) => r.mtype || "" },
+      { h: "DevAddr", f: (r) => r.devaddr ? `<span class="mono">${esc(r.devaddr)}</span>` : '<span class="muted">join</span>' },
+      { h: "NetID", f: (r) => esc(r.network || r.netid || "") }, { h: "MHz", f: (r) => n1(r.freq, 3), num: true }, { h: "DR", f: (r) => esc(r.datr || "") },
+      { h: "Result", f: (r) => esc((r.forwarded || []).join(", ")) },
+    ], tr.downlinks, { empty: "Helium requested no downlinks in this period" });
     table($("#he-traffic"), [
-      { h: "DevAddr", f: (r) => `<span class="mono">${esc(r.devaddr)}</span>` }, { h: "NetID", f: (r) => esc(r.netid || "") },
-      { h: "Packets", f: (r) => r.n, num: true }, { h: "Last FCnt", f: (r) => r.fcnt, num: true }, { h: "DR", f: (r) => esc(r.datr || "") },
+      { h: "DevAddr", f: (r) => `<span class="mono">${esc(r.devaddr)}</span>` }, { h: "Network", f: (r) => esc(r.network || `NetID ${r.netid || "?"}`) },
+      { h: "Uplinks", f: (r) => r.n, num: true }, { h: "DR", f: (r) => esc(r.datr || "") },
       { h: "RSSI", f: (r) => n1(r.rssi, 0), num: true }, { h: "SNR", f: (r) => n1(r.snr, 1), num: true }, { h: "Link", f: (r) => linkBadge(r.snr, r.datr) },
       { h: "Last seen", f: (r) => ago(r.last_ts) },
-    ], tr.devices, { empty: "No Helium devices heard in this period: everything offered to Helium belongs to other networks, so Helium drops it and there is nothing to earn data rewards with." });
+    ], tr.devices, { empty: "No device identified as served by Helium in this period" });
     const tiles = $("#he-tiles"), note = $("#he-note"); tiles.innerHTML = "";
     if (!s.enabled) { note.hidden = false; note.innerHTML = "<h3>Helium view disabled</h3><p>Set <span class=\"mono\">helium.enabled: true</span> in config.yaml.</p>"; return; }
     if (!s.updated) { note.hidden = false; note.innerHTML = "<h3>Collecting…</h3><p>The first Helium snapshot arrives about 10 seconds after the backend starts, then every 15 minutes.</p>"; return; }

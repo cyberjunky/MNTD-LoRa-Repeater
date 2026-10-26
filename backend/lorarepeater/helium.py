@@ -187,6 +187,8 @@ class Helium:
             asset = (state.get("hotspot") or {}).get("asset_id")
             if asset:
                 state["rewards"] = await self._section(state, "rewards", self._rewards(http, asset))
+                for sym, tok in ((state["rewards"] or {}).get("tokens") or {}).items():
+                    await self.db.log_helium_reward(sym, tok["lifetime"])
             wallet = (state.get("rewards") or {}).get("wallet")
             if wallet:
                 state["wallet"] = await self._section(state, "wallet", self._wallet(http, wallet))

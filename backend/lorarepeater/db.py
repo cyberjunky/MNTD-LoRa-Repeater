@@ -171,6 +171,13 @@ CREATE TABLE IF NOT EXISTS helium_scan (     -- one row: when the hotspot list w
     ts REAL, total INTEGER, nearby INTEGER, radius_km REAL
 );
 
+CREATE TABLE IF NOT EXISTS helium_rewards (   -- lifetime totals from the reward oracles, logged on change
+    ts       REAL NOT NULL,
+    token    TEXT NOT NULL,
+    lifetime REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_helium_rewards ON helium_rewards(token, ts);
+
 CREATE TABLE IF NOT EXISTS events (
     id      INTEGER PRIMARY KEY,
     ts      REAL NOT NULL,
@@ -295,6 +302,16 @@ class Database:
                                         "VALUES (:key, :lat, :lon, :distance_km)", rows)
             await self.conn.execute("INSERT OR REPLACE INTO helium_scan (id, ts, total, nearby, radius_km) "
                                     "VALUES (1, :ts, :total, :nearby, :radius_km)", scan)
+            await self.conn.commit()
+
+    async def log_helium_reward(self, token: str, lifetime: float) -> None:
+        """Store the oracle's lifetime total when it changed since the last entry."""
+        last = await self.fetchone("SELECT lifetime FROM helium_rewards WHERE token = ? ORDER BY ts DESC LIMIT 1", (token,))
+        if last and abs(last["lifetime"] - lifetime) < 1e-12:
+            return
+        async with self._lock:
+            await self.conn.execute("INSERT INTO helium_rewards (ts, token, lifetime) VALUES (?, ?, ?)",
+                                    (time.time(), token, lifetime))
             await self.conn.commit()
 
     async def bump_node_packets(self, num: int) -> None:

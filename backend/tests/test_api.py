@@ -44,4 +44,4 @@ async def test_index_serves_gui(client):
 
 async def test_helium_traffic(client):
     r = (await client.get("/api/helium/traffic?hours=6")).json()
-    assert r["totals"]["helium_up"] == 0 and r["devices"] == []
+    assert r["offered"] == 0 and r["downlinks"] == [] and r["devices"] == [] and r["earned"]["HNT"]["amount"] is None
