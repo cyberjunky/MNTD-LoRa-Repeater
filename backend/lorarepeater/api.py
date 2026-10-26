@@ -155,7 +155,7 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync, heli
             "FROM lorawan_packets p WHERE ts >= ? AND devaddr IS NOT NULL GROUP BY devaddr ORDER BY n DESC LIMIT 200", (since,))
         joins = await db.fetch(
             "SELECT dev_eui, MAX(dev_vendor) AS dev_vendor, MAX(join_eui) AS join_eui, MAX(join_vendor) AS join_vendor, "
-            "COUNT(*) AS n, MAX(ts) AS last_ts, AVG(rssi) AS rssi, AVG(lsnr) AS snr, GROUP_CONCAT(DISTINCT mtype) AS kinds "
+            "COUNT(*) AS n, MAX(ts) AS last_ts, AVG(rssi) AS rssi, AVG(lsnr) AS snr, GROUP_CONCAT(DISTINCT datr) AS datr, GROUP_CONCAT(DISTINCT mtype) AS kinds "
             "FROM lorawan_packets WHERE ts >= ? AND dev_eui IS NOT NULL GROUP BY dev_eui ORDER BY last_ts DESC LIMIT 200", (since,))
         by_network = await db.fetch(
             "SELECT COALESCE(network, 'NetID ' || netid) AS network, COUNT(*) AS n, COUNT(DISTINCT devaddr) AS devices "

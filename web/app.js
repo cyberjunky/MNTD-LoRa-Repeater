@@ -267,9 +267,11 @@
     { h: "Hops", f: (r) => r.hops_used == null ? "?" : `${r.hops_used}/${r.hop_start}`, num: true },
     { h: "Relay", f: (r) => r.relay_node == null ? "" : "…" + r.relay_node.toString(16).padStart(2, "0") },
     { h: "RSSI", f: (r) => r.rssi == null ? "" : n1(r.rssi, 0), num: true }, { h: "SNR", f: (r) => r.snr == null ? "" : n1(r.snr, 1), num: true },
+    { h: "Link", f: (r) => r.direction === "tx" ? "" : linkBadge(r.snr, status?.meshsx?.datr) },   // the last hop, to us
     { h: "Via", f: (r) => r.via_mqtt ? "MQTT" : "RF" },
     { h: "Content", f: (r) => meshContent(r) },
   ];
+  const OV_MESH_COLS = MESH_COLS.filter((c) => c.h !== "Via");  // compact overview
   const NODE_COLS = [
     { h: "Node", f: (r) => `<b>${esc(r.long_name || "")}</b> <span class="muted">${esc(r.short_name || "")}</span>` },
     { h: "ID", f: (r) => `<span class="mono">${esc(r.node_id || hex(r.num))}</span>` },
@@ -333,7 +335,7 @@
     stackedBars($("#chart-lw-time"), pivot(lw.per_bucket, lw.bucket_s, h, "direction", ["up", "down"]), ["up", "down"], ["uplinks", "downlinks"]);
     stackedBars($("#chart-mesh-time"), fill(mesh.per_bucket.map((b) => ({ t: b.t, heard: b.n - (b.tx || 0), relayed: b.relayed_by_us || 0, tx: b.tx || 0 })), mesh.bucket_s, h, ["heard", "relayed", "tx"]), ["heard", "relayed", "tx"], ["heard", "relayed by us", "sent by us"]);
     table($("#ov-lw"), OV_LW_COLS, lwp, { pageSize: 12 });
-    table($("#ov-mesh"), MESH_COLS.slice(0, 9).concat(MESH_COLS.slice(-1)), mp, { pageSize: 12 });
+    table($("#ov-mesh"), OV_MESH_COLS, mp, { pageSize: 12 });
   }
 
   const LW_STATE = { oldest: null };
@@ -352,7 +354,8 @@
     table($("#lw-joins"), [
       { h: "DevEUI", f: (r) => `<span class="mono">${r.dev_eui}</span>` }, { h: "Device vendor", f: (r) => esc(r.dev_vendor || "") },
       { h: "JoinEUI", f: (r) => `<span class="mono">${r.join_eui || ""}</span>` }, { h: "Join server vendor", f: (r) => esc(r.join_vendor || "") },
-      { h: "Kind", f: (r) => esc(r.kinds || "") }, { h: "Count", f: (r) => r.n, num: true }, { h: "RSSI", f: (r) => n1(r.rssi, 0), num: true }, { h: "Last seen", f: (r) => ago(r.last_ts) },
+      { h: "Kind", f: (r) => esc(r.kinds || "") }, { h: "Count", f: (r) => r.n, num: true }, { h: "DR", f: (r) => esc(r.datr || "") },
+      { h: "RSSI", f: (r) => n1(r.rssi, 0), num: true }, { h: "SNR", f: (r) => n1(r.snr, 1), num: true }, { h: "Link", f: (r) => linkBadge(r.snr, r.datr) }, { h: "Last seen", f: (r) => ago(r.last_ts) },
     ], s.joins, { empty: "no join requests yet" });
     hBars($("#chart-lw-freq"), s.by_freq.filter((r) => r.freq).map((r) => ({ label: n1(r.freq, 1) + " MHz", value: r.n, rssi: r.rssi })), { extra: (d) => `${n1(d.rssi, 0)} dBm` });
     hBars($("#chart-lw-datr"), s.by_datr.filter((r) => r.datr).map((r) => ({ label: r.datr, value: r.n })), { color: 1 });
@@ -400,7 +403,8 @@
     refreshMeshMap(nodes, links).catch(console.error);
     table($("#mesh-nodes"), NODE_COLS, nodes, { empty: "no nodes heard yet" });
     table($("#mesh-links"), [{ h: "From", f: (r) => nn(r.a) }, { h: "Heard by", f: (r) => nn(r.b) }, { h: "Source", f: (r) => r.source },
-      { h: "SNR", f: (r) => r.snr == null ? "" : n1(r.snr, 1), num: true }, { h: "Seen", f: (r) => r.count, num: true }, { h: "Last", f: (r) => ago(r.ts) }], links, { empty: "no links yet" });
+      { h: "SNR", f: (r) => r.snr == null ? "" : n1(r.snr, 1), num: true }, { h: "Link", f: (r) => linkBadge(r.snr, status?.meshsx?.datr) },
+      { h: "Seen", f: (r) => r.count, num: true }, { h: "Last", f: (r) => ago(r.ts) }], links, { empty: "no links yet" });
     table($("#mesh-channels"), [{ h: "Hash", f: (r) => r.channel_hash ?? "?", num: true }, { h: "Channel", f: (r) => r.channel != null ? (status?.meshsx?.channels || [])[r.channel] || r.channel : "unknown key" },
       { h: "Packets", f: (r) => r.n, num: true }, { h: "Encrypted", f: (r) => r.encrypted, num: true }, { h: "Nodes", f: (r) => r.nodes, num: true }], s.by_channel, { empty: "nothing heard yet" });
     await loadMeshLog(true);
@@ -888,7 +892,7 @@ actions:
     ws.onmessage = (e) => {
       const { kind, row } = JSON.parse(e.data);
       if (kind === "lorawan_packets") { if (tab === "overview") prepend($("#ov-lw"), OV_LW_COLS, row); if (tab === "lorawan") prepend($("#lw-log"), LW_COLS, row); }
-      if (kind === "mesh_packets") { if (tab === "overview") prepend($("#ov-mesh"), MESH_COLS.slice(0, 9).concat(MESH_COLS.slice(-1)), row); if (tab === "mesh") { prepend($("#mesh-log"), MESH_COLS, row); if (row.text) { const b = $("#mesh-msgs"); b.querySelector(".empty")?.remove(); b.prepend(msgEl(row)); } } }
+      if (kind === "mesh_packets") { if (tab === "overview") prepend($("#ov-mesh"), OV_MESH_COLS, row); if (tab === "mesh") { prepend($("#mesh-log"), MESH_COLS, row); if (row.text) { const b = $("#mesh-msgs"); b.querySelector(".empty")?.remove(); b.prepend(msgEl(row)); } } }
       if (kind === "events" && tab === "events") prepend($("#events"), EVENT_COLS, row);
       rawFeed(kind, row);
     };
