@@ -38,8 +38,8 @@
   <section id="tab-overview" class="tab active">
     <div class="tiles" id="tiles"></div>
     <div class="grid2">
-      <figure class="card"><figcaption>LoRaWAN packets <span class="muted" id="lw-range"></span></figcaption><div class="chart" id="chart-lw-time"></div></figure>
-      <figure class="card"><figcaption>Meshtastic packets <span class="muted" id="mesh-range"></span></figcaption><div class="chart" id="chart-mesh-time"></div></figure>
+      <figure class="card"><figcaption>LoRaWAN packets <span class="muted" id="lw-range"></span></figcaption><div class="chart resizable" id="chart-lw-time"></div></figure>
+      <figure class="card"><figcaption>Meshtastic packets <span class="muted" id="mesh-range"></span></figcaption><div class="chart resizable" id="chart-mesh-time"></div></figure>
     </div>
     <div class="grid2">
       <div class="card"><h3>Latest LoRaWAN</h3><table class="tbl compact" id="ov-lw"></table></div>
@@ -76,7 +76,7 @@
       <figure class="card"><figcaption>Packets by port</figcaption><div class="chart" id="chart-mesh-port"></div></figure>
       <figure class="card"><figcaption>Hops used before reaching us</figcaption><div class="chart" id="chart-mesh-hops"></div></figure>
     </div>
-    <div class="card"><h3>Messages</h3><div class="msgs" id="mesh-msgs"></div>
+    <div class="card"><h3>Messages</h3><div class="msgs resizable" id="mesh-msgs"></div>
       <form class="compose" id="mesh-compose" autocomplete="off">
         <select id="mesh-to" title="destination"></select>
         <select id="mesh-ch" title="channel"></select>
@@ -85,7 +85,7 @@
         <button type="submit" id="mesh-send">Send</button>
         <span class="muted" id="mesh-send-msg"></span>
       </form></div>
-    <div class="card"><div class="row"><h3>Map</h3><span class="muted" id="mesh-map-info"></span></div><div class="map" id="mesh-map"></div></div>
+    <div class="card"><div class="row"><h3>Map</h3><span class="muted" id="mesh-map-info"></span></div><div class="map resizable" id="mesh-map"></div></div>
     <div class="card"><h3>Nodes</h3><table class="tbl" id="mesh-nodes"></table></div>
     <div class="grid2">
       <div class="card"><h3>Links <span class="muted">(who hears whom: direct RF, neighbour info, traceroute)</span></h3><table class="tbl compact" id="mesh-links"></table></div>
@@ -116,10 +116,10 @@
       <p class="note">Helium buys packets for its own devices and for roaming partners. Which uplinks the packet router bought is not visible on the box; the downlinks it requested and the rewards the oracle added are, and are shown here.</p>
       <div class="grid2"><div><h3>Downlinks requested by Helium</h3><table class="tbl compact" id="he-downs"></table></div>
       <div><h3>Devices Helium served <span class="muted">(Helium addresses, or a Helium downlink went to them)</span></h3><table class="tbl compact" id="he-traffic"></table></div></div></div>
-    <div class="card"><div class="row"><h3>Hotspots nearby</h3><span class="muted" id="he-map-info"></span></div><div class="map" id="he-map"></div></div>
+    <div class="card"><div class="row"><h3>Hotspots nearby</h3><span class="muted" id="he-map-info"></span></div><div class="map resizable" id="he-map"></div></div>
     <div class="grid2">
-      <figure class="card"><figcaption>HNT claimed <span class="muted">(cumulative, per claim)</span></figcaption><div class="chart" id="chart-he-hnt"></div></figure>
-      <figure class="card"><figcaption>IOT claimed <span class="muted">(cumulative, before HIP-138)</span></figcaption><div class="chart" id="chart-he-iot"></div></figure>
+      <figure class="card"><figcaption>HNT claimed <span class="muted">(cumulative, per claim)</span></figcaption><div class="chart resizable" id="chart-he-hnt"></div></figure>
+      <figure class="card"><figcaption>IOT claimed <span class="muted">(cumulative, before HIP-138)</span></figcaption><div class="chart resizable" id="chart-he-iot"></div></figure>
     </div>
     <div class="grid2">
       <div class="card"><h3>Hotspot <span class="muted">(on-chain NFT)</span></h3><table class="tbl" id="he-hotspot"></table></div>
@@ -236,16 +236,16 @@
         <label><input type="checkbox" id="diag-log-follow"> follow</label>
         <button id="diag-log-refresh">Refresh</button>
         <a id="diag-log-dl" href="/api/diag/log.txt" download="lorarepeater.log">Download</a></div>
-      <pre class="log" id="diag-log"></pre>
+      <pre class="log resizable" id="diag-log"></pre>
     </div>
     <div class="grid2">
       <div class="card"><div class="row"><h3>Hardware</h3><button id="diag-hw-refresh">Rescan</button></div><div id="diag-hw"></div></div>
-      <div class="card"><h3>Effective configuration <span class="muted">(secrets masked)</span></h3><pre class="log tall" id="diag-config"></pre></div>
+      <div class="card"><h3>Effective configuration <span class="muted">(secrets masked)</span></h3><pre class="log tall resizable" id="diag-config"></pre></div>
     </div>
     <div class="card">
       <div class="row"><h3>Raw live feed</h3><span class="muted">every row the backend stores, as JSON</span>
         <label><input type="checkbox" id="diag-raw-pause"> pause</label><button id="diag-raw-clear">Clear</button></div>
-      <pre class="log" id="diag-raw"></pre>
+      <pre class="log resizable" id="diag-raw"></pre>
     </div>
   </section>
 </main>

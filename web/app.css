@@ -159,7 +159,7 @@ p.note { margin: 0 0 12px; font-size: 12px; color: var(--text-muted); max-width:
 .pager[hidden] { display: none; }
 
 /* messages */
-.msgs { max-height: 340px; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+.msgs { height: 300px; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
 .msg { padding: 7px 11px; border-left: 3px solid var(--series-3); background: var(--surface-2); border-radius: 0 4px 4px 0; }
 .msg .meta { font: 11px var(--mono); color: var(--text-muted); }
 
@@ -188,9 +188,9 @@ button:disabled { opacity: .5; cursor: wait; }
 .chart .line { fill: none; stroke-width: 1.75; stroke-linejoin: round; stroke-linecap: round; }
 .chart .hit { fill: transparent; }
 .chart .crosshair { stroke: var(--text-muted); stroke-dasharray: 3 3; }
-.chart .legend { display: flex; gap: 14px; position: absolute; top: -46px; right: 0; height: 34px; align-items: center;
-  font: 11px var(--mono); color: var(--text-muted); }   /* sits in the panel's header strip */
-.chart .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+figcaption .legend { display: flex; gap: 14px; margin-left: auto; font: 400 11px var(--mono); color: var(--text-muted);
+  text-transform: none; letter-spacing: 0; }   /* in the panel's header strip */
+figcaption .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
 .chart .dlabel { fill: var(--text-secondary); font: 10.5px var(--mono); }
 .tooltip { position: fixed; z-index: 20; pointer-events: none; white-space: nowrap; padding: 7px 10px; border-radius: 4px;
   background: var(--surface-2); color: var(--text-primary); border: 1px solid var(--line); font: 11.5px/1.5 var(--mono);
@@ -211,8 +211,13 @@ button:disabled { opacity: .5; cursor: wait; }
 
 /* ---------------------------------------------------------------- diagnostics */
 .log { margin: 0; padding: 10px 12px; background: var(--surface-0); border: 1px solid var(--line); border-radius: 4px;
-  font: 11.5px/1.5 var(--mono); color: var(--text-primary); max-height: 440px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
-.log.short { max-height: 200px; } .log.tall { max-height: 640px; }
+  font: 11.5px/1.5 var(--mono); color: var(--text-primary); overflow: auto; white-space: pre-wrap; word-break: break-all; }
+.log.short { max-height: 200px; } .log.resizable { height: 440px; } .log.tall { height: 640px; }
+
+/* drag the bottom-right corner to change the height; the size is remembered per browser */
+.resizable { resize: vertical; min-height: 120px; }
+.chart.resizable { overflow: hidden; }
+.resizable::-webkit-resizer { background: linear-gradient(135deg, transparent 0 55%, var(--text-muted) 55% 62%, transparent 62% 72%, var(--text-muted) 72% 79%, transparent 79%); }
 .kv { margin-bottom: 12px; }
 .kv b { display: block; margin-bottom: 4px; font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; }
 

@@ -83,11 +83,12 @@
   }
   function legend(container, names, colors) {
     if (names.length < 2) return;
-    const l = el("div", { class: "legend" });
+    const l = el("div", { class: "legend" }), strip = container.closest("figure").querySelector("figcaption");
     names.forEach((n, i) => l.append(el("span", {}, el("i", { style: `background:${colors[i]}` }), n)));
-    container.append(l);
+    strip.querySelector(".legend")?.remove();
+    strip.append(l);
   }
-  const empty = (c, msg = "no data yet") => { c.innerHTML = ""; c.append(el("div", { class: "empty" }, msg)); };
+  const empty = (c, msg = "no data yet") => { c.innerHTML = ""; c.closest("figure")?.querySelector("figcaption .legend")?.remove(); c.append(el("div", { class: "empty" }, msg)); };
 
   /** Time buckets, up to 4 series: stacked bars with hover. data = [{t, a, b}], keys = ["a","b"] */
   function stackedBars(container, data, keys, names, { fmtVal = (v) => v } = {}) {
@@ -924,5 +925,23 @@ actions:
   connectWs();
   setInterval(() => refreshStatus().catch(console.error), 15000);
   setInterval(() => refreshTab(tab), 60000);
-  addEventListener("resize", () => refreshTab(tab));
+  // charts and maps redraw at the new size; one redraw per burst of resize events
+  let redraw = null;
+  const redrawSoon = () => { clearTimeout(redraw); redraw = setTimeout(() => dispatchEvent(new Event("resize")), 200); };
+  let resizing = null;
+  addEventListener("resize", () => { clearTimeout(resizing); resizing = setTimeout(() => refreshTab(tab), 150); });
+  // user-resized panels: restore the saved heights, save new ones
+  const seen = new WeakMap();
+  const sizes = new ResizeObserver((entries) => entries.forEach(({ target: n }) => {
+    const h = n.offsetHeight, was = seen.get(n);
+    if (!h) return;                                       // hidden tab
+    seen.set(n, h);
+    if (was === undefined || was === h || !n.style.height) return;
+    try { localStorage.setItem(`h:${n.id}`, n.style.height); } catch {}
+    redrawSoon();
+  }));
+  document.querySelectorAll(".resizable").forEach((n) => {
+    try { const h = localStorage.getItem(`h:${n.id}`); if (h) n.style.height = h; } catch {}
+    sizes.observe(n);
+  });
 })();
