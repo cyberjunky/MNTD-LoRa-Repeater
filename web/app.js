@@ -351,8 +351,8 @@
     $("#mesh-range").textContent = `last ${h} h · ${mesh.totals.total || 0} total`;
     stackedBars($("#chart-lw-time"), pivot(lw.per_bucket, lw.bucket_s, h, "direction", ["up", "down"]), ["up", "down"], ["uplinks", "downlinks"]);
     stackedBars($("#chart-mesh-time"), fill(mesh.per_bucket.map((b) => ({ t: b.t, heard: b.n - (b.tx || 0), relayed: b.relayed_by_us || 0, tx: b.tx || 0 })), mesh.bucket_s, h, ["heard", "relayed", "tx"]), ["heard", "relayed", "tx"], ["heard", "relayed by us", "sent by us"]);
-    table($("#ov-lw"), OV_LW_COLS, lwp, { pageSize: 12 });
-    table($("#ov-mesh"), OV_MESH_COLS, mp, { pageSize: 12 });
+    table($("#ov-lw"), OV_LW_COLS, lwp, { pageSize: 20 });
+    table($("#ov-mesh"), OV_MESH_COLS, mp, { pageSize: 20 });
   }
 
   const LW_STATE = { oldest: null };

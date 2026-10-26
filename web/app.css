@@ -74,11 +74,11 @@ a:hover { text-decoration: underline; }
 .icon-btn:hover { color: var(--text-primary); border-color: var(--text-muted); }
 
 /* ---------------------------------------------------------------- footer status bar */
-.bar { flex: none; display: flex; align-items: center; gap: 18px; height: 26px; padding: 0 14px; overflow: hidden;
+.statusbar { flex: none; display: flex; align-items: center; gap: 18px; height: 26px; padding: 0 14px; overflow: hidden;
   background: var(--surface-2); border-top: 1px solid var(--line); font: 11px var(--mono); color: var(--text-muted); white-space: nowrap; }
-.bar span { display: inline-flex; align-items: center; gap: 6px; }
-.bar b { color: var(--text-secondary); font-weight: 500; }
-.bar .right { margin-left: auto; }
+.statusbar span { display: inline-flex; align-items: center; gap: 6px; }
+.statusbar b { color: var(--text-secondary); font-weight: 500; }
+.statusbar .right { margin-left: auto; }
 .live.on { color: var(--good); }
 .live.on .dot { background: var(--good); box-shadow: 0 0 6px var(--good); animation: pulse 2s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: .35; } }
