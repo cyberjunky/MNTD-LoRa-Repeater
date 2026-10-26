@@ -33,7 +33,13 @@ not affiliated with or endorsed by either company; the icon is an original drawi
   concentrator's service channel on EU_868 LongFast with the Meshtastic sync word, and a Python
   node (ROUTER_LATE) decrypts, logs, relays, ACKs and sends. Every packet, hop count, relay
   node, RSSI/SNR, airtime and the node database are recorded.
+- **Send to the mesh** from the GUI (broadcast or direct message, any configured channel),
+  with a **map** of every node that reports a position and the links between them.
+- **MQTT**: a Meshtastic uplink (encrypted `ServiceEnvelope` frames, as a Meshtastic node with
+  MQTT on) and **Home Assistant** discovery (gateway sensors, a device per node, a "Mesh text"
+  event, a "Mesh broadcast" notify entity to send from automations).
 - **Telegram bridge**: mesh texts into a chat or channel, `/send` and `/dm` back to the mesh.
+- **Settings tab** for MQTT and Telegram; stored next to the database, applied by a restart.
 - **Helium**: Helium's gateway-rs runs with the hotspot key from the secure element, so the box
   stays on Helium alongside TTN. The Helium tab shows the hotspot's on-chain record
   (location, gain, active state), lifetime/claimed/unclaimed HNT and IOT, the full claim

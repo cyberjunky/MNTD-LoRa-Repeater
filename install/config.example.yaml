@@ -43,7 +43,7 @@ meshsx:
   # position: {lat: 52.0, lon: 5.0, alt: 10}   # site position (there is no GPS on this hardware)
   channels:
     - name: LongFast
-      psk: "AQ=="           # default key; put your own base64 key here for a private channel
+      psk: "AQ=="           # default key; own key in base64: 16 bytes = AES-128, 32 bytes = AES-256
 
 # Telegram bot: mesh texts into a chat, /send and /dm out. Create a bot with @BotFather.
 telegram:
@@ -53,6 +53,28 @@ telegram:
   notify_chat_id: null      # chat or channel id that receives every mesh text
   notify_all_text: true
 
+# MQTT (also editable in the GUI's Settings tab; what is saved there wins over this file)
+mqtt:
+  meshtastic:               # uplink like a Meshtastic node with MQTT on (encrypted ServiceEnvelope)
+    enabled: false
+    host: mqtt.meshtastic.org
+    port: 1883
+    username: meshdev
+    password: large4cats
+    tls: false
+    root_topic: msh/EU_868
+    channels: [LongFast]    # names from meshsx.channels
+  homeassistant:            # discovery, gateway and node sensors, texts in and out
+    enabled: false
+    host: ""                # the broker Home Assistant uses
+    port: 1883
+    username: ""
+    password: ""
+    tls: false
+    base_topic: lorarepeater
+    discovery_prefix: homeassistant
+    node_entities: true     # a device per heard node
+    allow_send: true        # texts on lorarepeater/send go to the mesh
 
 web:
   host: 0.0.0.0

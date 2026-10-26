@@ -50,9 +50,62 @@ exactly like a network server would send a downlink.
 - Sends NodeInfo every hour (and Position from the GPS if enabled), ACKs direct messages
   addressed to the box, and originates text messages (used by the Telegram bridge).
 
+Channel keys follow the Meshtastic rules: `AQ==` (and other one-byte values) select a default
+key, 16 bytes is AES-128, 32 bytes is AES-256 (base64, as the app shows it).
+
 Not implemented: traceroute, store-and-forward, admin channel, PKI-encrypted direct messages
 (relayed, not read), channel-hash collisions beyond the configured channels, favourite-router
-zero-cost hops.
+zero-cost hops, retransmission of our own messages when no ACK comes back.
+
+## Sending and the map
+
+The Meshtastic tab has a message box (broadcast or a known node, and the channel when more
+than one is configured; at most 230 bytes of UTF-8) and a map of every node whose position
+was heard, with the RF and neighbour-info links between them. Put the site in
+`meshsx.position` to place the box itself; the map uses the exact position, the air only the
+coarsened one, and only when `position_broadcast` is on.
+
+## MQTT
+
+Configured in the Settings tab (or `mqtt:` in `config.yaml`).
+
+**Meshtastic uplink** (`mqtt.meshtastic`): like a Meshtastic node with MQTT enabled. Each frame
+heard on, or sent from, a channel listed in `channels` is published exactly as it was on air
+(encrypted) as a `ServiceEnvelope` on `<root_topic>/2/e/<channel>/!<our node id>`. Not
+published: frames whose sender turned off "OK to MQTT" (firmware 2.5+), frames that already
+came through MQTT, and channels without a key. The defaults are the public broker
+(`mqtt.meshtastic.org`, `meshdev`/`large4cats`, `msh/EU_868`). Nothing comes back from MQTT
+into the mesh.
+
+**Home Assistant** (`mqtt.homeassistant`), JSON under `base_topic` (default `lorarepeater`),
+entities by MQTT discovery:
+
+| Topic | |
+|---|---|
+| `lorarepeater/status` | `online` / `offline` (retained, last will) |
+| `lorarepeater/state` | packets heard, relayed and sent, airtime, nodes heard in 24 h, LoRaWAN packets, CPU temperature (every minute) |
+| `lorarepeater/node/<id>/state` | per node: battery, voltage, SNR, RSSI, hops, temperature, humidity, pressure, last heard, position (`node_entities`) |
+| `lorarepeater/text` | every received text: `{"event_type": "text", "text", "from", "from_name", "to", "channel", "rssi", "snr", "hops"}` |
+| `lorarepeater/send` | command (`allow_send`): plain text = broadcast on channel 0, or `{"text", "to": "!aabbccdd", "channel"}` |
+| `lorarepeater/send/result` | `{"ok": true, "packet_id": ...}` or `{"ok": false, "error": ...}` |
+
+Broadcast from an automation through the notify entity, or send anything with `mqtt.publish`:
+
+```yaml
+action: notify.send_message
+target:
+  entity_id: notify.mntd_lora_repeater_mesh_broadcast
+data:
+  message: "Storm warning for the area"
+---
+action: mqtt.publish
+data:
+  topic: lorarepeater/send
+  payload: '{"text": "hello", "to": "!aabbccdd"}'
+```
+
+React to mesh texts with the "Mesh text" event entity or an MQTT trigger on `lorarepeater/text`
+(`trigger.payload_json.text`, `trigger.payload_json.from_name`).
 
 ## Telegram ([backend/lorarepeater/telegram.py](../backend/lorarepeater/telegram.py))
 

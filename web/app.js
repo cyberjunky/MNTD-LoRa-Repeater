@@ -318,6 +318,10 @@
     if (sx) tiles.append(tile("Mesh airtime (1 h)", `${n1(sx.duty_used_pct_1h, 2)} %`, `of ${sx.duty_limit_pct} % duty cycle · relayed ${sx.counters.relayed} · sent ${sx.counters.tx}`, sx.duty_used_pct_1h > sx.duty_limit_pct * 0.8 ? "warning" : "good"));
     const he = status.helium;
     if (he?.enabled) tiles.append(tile("Helium hotspot", he.hnt_lifetime != null ? `${n1(he.hnt_lifetime, 2)} HNT` : (he.router ? "connected" : "offline"), `${he.name || "?"} · ${he.router ? "router connected" : "router offline"}`, he.router ? "good" : "critical"));
+    const mq = [["Meshtastic", status.mqtt?.meshtastic], ["Home Assistant", status.mqtt?.homeassistant]].filter(([, l]) => l?.enabled);
+    if (mq.length) tiles.append(tile("MQTT", `${mq.filter(([, l]) => l.connected).length} / ${mq.length} connected`,
+      mq.map(([n, l]) => `${n} ${l.host} · ${l.connected ? `${l.counters.published} sent` : l.last_error || "connecting"}`).join(" · "),
+      mq.every(([, l]) => l.connected) ? "good" : "critical"));
     if (tg && tg.enabled) tiles.append(tile("Telegram", tg.connected ? `@${tg.bot || "bot"}` : "offline", `in ${tg.counters.in} · out ${tg.counters.out} · posted ${tg.counters.posted}`, tg.connected ? "good" : "critical"));
   }
 
@@ -392,6 +396,8 @@
     const box = $("#mesh-msgs"); box.innerHTML = "";
     if (!msgs.length) box.append(el("div", { class: "empty" }, "no text messages yet"));
     msgs.forEach((m) => box.append(msgEl(m)));
+    fillCompose(nodes);
+    refreshMeshMap(nodes, links).catch(console.error);
     table($("#mesh-nodes"), NODE_COLS, nodes, { empty: "no nodes heard yet" });
     table($("#mesh-links"), [{ h: "From", f: (r) => nn(r.a) }, { h: "Heard by", f: (r) => nn(r.b) }, { h: "Source", f: (r) => r.source },
       { h: "SNR", f: (r) => r.snr == null ? "" : n1(r.snr, 1), num: true }, { h: "Seen", f: (r) => r.count, num: true }, { h: "Last", f: (r) => ago(r.ts) }], links, { empty: "no links yet" });
@@ -399,6 +405,80 @@
       { h: "Packets", f: (r) => r.n, num: true }, { h: "Encrypted", f: (r) => r.encrypted, num: true }, { h: "Nodes", f: (r) => r.nodes, num: true }], s.by_channel, { empty: "nothing heard yet" });
     await loadMeshLog(true);
   }
+  // ---------------------------------------------------------------- send to the mesh
+  const utf8Len = (t) => new TextEncoder().encode(t).length;
+  function fillCompose(nodes) {
+    const sx = status?.meshsx, form = $("#mesh-compose");
+    form.hidden = !sx;
+    if (!sx) return;
+    const to = $("#mesh-to"), ch = $("#mesh-ch"), keepTo = to.value, keepCh = ch.value;
+    to.innerHTML = "";
+    to.append(el("option", { value: "" }, "broadcast"));
+    nodes.filter((n) => n.num !== sx.node_num).sort((a, b) => (nodeName(a) || "").localeCompare(nodeName(b) || ""))
+      .forEach((n) => to.append(el("option", { value: hex(n.num) }, `${nodeName(n)} (${hex(n.num)})`)));
+    to.value = [...to.options].some((o) => o.value === keepTo) ? keepTo : "";
+    ch.innerHTML = "";
+    sx.channels.forEach((c, i) => ch.append(el("option", { value: i }, c)));
+    ch.value = keepCh || "0";
+    ch.hidden = sx.channels.length < 2;
+    $("#mesh-send").disabled = !sx.tx_enabled;
+    $("#mesh-send").title = sx.tx_enabled ? "" : "meshsx.tx_enabled is off";
+    updateBytes();
+  }
+  function updateBytes() {
+    const max = status?.meshsx?.max_text_bytes || 230, n = utf8Len($("#mesh-text").value);
+    $("#mesh-bytes").textContent = `${n}/${max}`;
+    $("#mesh-bytes").classList.toggle("over", n > max);
+  }
+  $("#mesh-text").oninput = updateBytes;
+  $("#mesh-compose").onsubmit = async (e) => {
+    e.preventDefault();
+    const btn = $("#mesh-send"), msg = $("#mesh-send-msg"), text = $("#mesh-text").value.trim();
+    if (!text) return;
+    btn.disabled = true; msg.textContent = "sending…";
+    try {
+      const r = await sendJson("POST", "/api/mesh/send", { text, to: $("#mesh-to").value || null, channel: Number($("#mesh-ch").value || 0) });
+      msg.textContent = `sent to ${r.to === "!ffffffff" ? "everyone" : r.to} · id ${r.packet_id}`;
+      $("#mesh-text").value = ""; updateBytes();
+    } catch (err) { msg.textContent = err.message; }
+    btn.disabled = !status?.meshsx?.tx_enabled;
+  };
+
+  // ---------------------------------------------------------------- mesh map
+  let meshMap = null, meshLayer = null;
+  async function refreshMeshMap(nodes, links) {
+    const box = $("#mesh-map"), info = $("#mesh-map-info"), placed = nodes.filter((n) => n.lat != null && n.lon != null);
+    const me = status?.meshsx?.node_num;
+    info.textContent = `${placed.length} of ${nodes.length} nodes report a position${placed.some((n) => n.num === me) ? "" : " · set meshsx.position to place this box"}`;
+    box.hidden = !placed.length;
+    if (!placed.length) return;
+    try { await loadLeaflet(); } catch (e) { box.textContent = e.message; return; }
+    const L = window.L, at = Object.fromEntries(placed.map((n) => [n.num, [n.lat, n.lon]]));
+    if (!meshMap) {
+      meshMap = L.map(box, { scrollWheelZoom: false, preferCanvas: true });
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "© OpenStreetMap contributors" }).addTo(meshMap);
+      meshMap.fitBounds(L.latLngBounds(placed.map((n) => at[n.num])).pad(0.2), { maxZoom: 13 });
+    }
+    meshLayer?.remove();
+    meshLayer = L.layerGroup().addTo(meshMap);
+    for (const l of links) {      // who hears whom, where both ends have a position
+      if (!at[l.a] || !at[l.b]) continue;
+      L.polyline([at[l.a], at[l.b]], { color: css(l.source === "rf" ? "--series-3" : "--series-1"), weight: 2, opacity: 0.6, dashArray: l.source === "rf" ? null : "4 4" })
+        .bindTooltip(`${nn(l.a)} → ${nn(l.b)} · ${esc(l.source)}${l.snr != null ? ` · SNR ${n1(l.snr, 1)} dB` : ""}`).addTo(meshLayer);
+    }
+    for (const n of placed) {
+      const mine = n.num === me, color = mine ? "#d9ad45" : css(n.hops_away === 0 ? "--series-3" : n.hops_away > 0 ? "--series-1" : "--text-muted");
+      L.circleMarker(at[n.num], { radius: mine ? 9 : 6, weight: mine ? 2 : 1, color: mine ? "#8a6416" : css("--surface-1"), fillColor: color, fillOpacity: 0.9 })
+        .bindPopup(`<b>${esc(nodeName(n))}</b> <span class="mono">${hex(n.num)}</span><br>${esc([n.hw_model, n.role].filter(Boolean).join(" · "))}` +
+          (mine ? "<br>this box" : `<br>heard ${ago(n.last_heard)} · ${n.hops_away == null ? "hops ?" : n.hops_away === 0 ? "direct" : `${n.hops_away} hops`}${n.snr != null ? ` · SNR ${n1(n.snr, 1)} dB` : ""}`) +
+          (n.battery != null ? `<br>battery ${n.battery > 100 ? "mains" : n.battery + "%"}` : "") +
+          (n.alt ? `<br>${n1(n.alt, 0)} m` : ""))
+        .bindTooltip(esc(n.short_name || nodeName(n)), { direction: "top", offset: [0, -6] })
+        .addTo(meshLayer);
+    }
+    setTimeout(() => meshMap.invalidateSize(), 50);
+  }
+
   const msgEl = (m) => el("div", { class: "msg" }, el("div", {}, m.text), el("div", { class: "meta" }, `${nodeName(nodeMap[m.from_node]) || hex(m.from_node)} → ${m.to_node === 0xffffffff ? "all" : nodeName(nodeMap[m.to_node]) || hex(m.to_node)} · ch ${m.channel} · ${fmtTs(m.ts)} · ${m.hops_used ?? "?"} hops · SNR ${n1(m.snr, 1)}`));
   async function loadMeshLog(reset) {
     const q = new URLSearchParams({ limit: 500 });
@@ -565,6 +645,105 @@
 
   async function refreshEvents() { table($("#events"), EVENT_COLS, await api("/api/events?limit=200")); }
 
+  // ---------------------------------------------------------------- settings
+  const sendJson = (method, p, body) => fetch(p, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+    .then(async (r) => { const b = await r.json().catch(() => ({})); if (!r.ok) throw new Error(b.detail || `${p}: ${r.status}`); return b; });
+  const BROKER = [["enabled", "Enabled", "bool"], ["host", "Broker host", "text"], ["port", "Port", "int"],
+    ["username", "Username", "text"], ["password", "Password", "secret"], ["tls", "TLS", "bool"]];
+  const SETTINGS = {
+    mqtt: { title: "MQTT", groups: [
+      { key: "meshtastic", title: "Meshtastic uplink", help: "Publishes what this node hears, encrypted as on air, like a Meshtastic node with MQTT enabled (ServiceEnvelope on <root>/2/e/<channel>/<node id>). Senders that turned off “OK to MQTT” are skipped. The default is the public Meshtastic broker.",
+        fields: [...BROKER, ["root_topic", "Root topic", "text"], ["channels", "Channels to uplink", "list", "names from meshsx.channels, comma separated"]] },
+      { key: "homeassistant", title: "Home Assistant", help: "Gateway sensors, a device per heard node, a “Mesh text” event and a “Mesh broadcast” notify entity, all by MQTT discovery. Use the broker your Home Assistant uses.",
+        fields: [...BROKER, ["base_topic", "Base topic", "text"], ["discovery_prefix", "Discovery prefix", "text"],
+          ["node_entities", "Device per mesh node", "bool"], ["allow_send", "Allow sending to the mesh", "bool"]],
+        extra: () => `<details><summary>Use from Home Assistant</summary><pre class="log short">${esc(HA_EXAMPLE(settingsVal("mqtt", "homeassistant.base_topic") || "lorarepeater"))}</pre></details>` },
+    ] },
+    telegram: { title: "Telegram", groups: [
+      { key: null, title: "Telegram bot", help: "Mesh texts into a chat, /send and /dm back. Create the bot with @BotFather; the Events tab shows the id of any chat that writes to it.",
+        fields: [["enabled", "Enabled", "bool"], ["token", "Bot token", "secret"], ["allowed_chat_ids", "Chats allowed to send", "intlist", "chat ids, comma separated"],
+          ["notify_chat_id", "Post mesh texts to chat", "intnull"], ["notify_all_text", "Also texts not addressed to us", "bool"], ["poll_timeout_s", "Poll timeout (s)", "int"]] },
+    ] },
+  };
+  const HA_EXAMPLE = (b) => `# broadcast from an automation
+action: notify.send_message
+target:
+  entity_id: notify.<device>_mesh_broadcast
+data:
+  message: "Storm warning for the area"
+
+# direct message or another channel
+action: mqtt.publish
+data:
+  topic: ${b}/send
+  payload: '{"text": "hello", "to": "!aabbccdd", "channel": 0}'
+
+# react to a mesh text
+triggers:
+  - trigger: mqtt
+    topic: ${b}/text
+actions:
+  - action: persistent_notification.create
+    data:
+      message: "{{ trigger.payload_json.from_name }}: {{ trigger.payload_json.text }}"`;
+  const SET_STATE = { data: null, dirty: false };
+  const settingsVal = (section, path) => path.split(".").reduce((o, k) => o?.[k], SET_STATE.data?.[section]?.value);
+  function fieldEl(section, path, [, label, type, hint]) {
+    const id = `set-${section}-${path}`.replace(/\./g, "-"), v = settingsVal(section, path);
+    let input;
+    if (type === "bool") { input = el("input", { type: "checkbox", id }); input.checked = !!v; }
+    else {
+      input = el("input", { id, type: type === "int" || type === "intnull" ? "number" : "text", class: type === "secret" ? "mono" : "", spellcheck: "false" });
+      input.value = Array.isArray(v) ? v.join(", ") : v ?? "";
+      if (hint) input.placeholder = hint;
+    }
+    input.dataset.path = path; input.dataset.type = type;
+    return el("label", { class: type === "bool" ? "field check" : "field", for: id }, ...(type === "bool" ? [input, label] : [el("span", {}, label), input]));
+  }
+  function readForm(form) {
+    const out = structuredClone(SET_STATE.data[form.dataset.section].value);
+    const csv = (raw) => raw.split(",").map((x) => x.trim()).filter(Boolean);
+    for (const i of form.querySelectorAll("input[data-path]")) {
+      const t = i.dataset.type, raw = i.value.trim();
+      const v = t === "bool" ? i.checked : t === "int" ? Number(raw) : t === "intnull" ? (raw ? Number(raw) : null)
+        : t === "list" ? csv(raw) : t === "intlist" ? csv(raw).map(Number) : raw;
+      const keys = i.dataset.path.split("."), last = keys.pop();
+      keys.reduce((o, k) => o[k], out)[last] = v;
+    }
+    return out;
+  }
+  async function refreshSettings() {
+    if (SET_STATE.dirty) return;          // never redraw over unsaved edits
+    SET_STATE.data = await api("/api/settings");
+    const box = $("#settings"); box.innerHTML = "";
+    for (const [section, spec] of Object.entries(SETTINGS)) {
+      const src = SET_STATE.data[section].source;
+      if (src !== "config.yaml") $("#settings-path").textContent = src;
+      const form = el("form", { class: "card settings", "data-section": section, autocomplete: "off" },
+        el("div", { class: "row" }, el("h3", {}, spec.title), el("span", { class: "muted" }, `from ${src}`),
+          el("span", { class: "muted save-msg" }), el("button", { type: "submit" }, "Save and restart")));
+      for (const g of spec.groups) {
+        const fs = el("fieldset", {}, el("legend", {}, g.title), el("p", { class: "muted" }, g.help),
+          el("div", { class: "fields" }, ...g.fields.map((f) => fieldEl(section, g.key ? `${g.key}.${f[0]}` : f[0], f))));
+        if (g.extra) fs.append(el("div", { html: g.extra() }));
+        form.append(fs);
+      }
+      form.oninput = () => (SET_STATE.dirty = true);
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        const msg = form.querySelector(".save-msg"), btn = form.querySelector("button");
+        btn.disabled = true; msg.textContent = "saving…";
+        try {
+          await sendJson("PUT", `/api/settings/${section}`, readForm(form));
+          msg.textContent = "saved · restarting the backend…";
+          SET_STATE.dirty = false;
+          setTimeout(() => refreshAll(), 6000);
+        } catch (err) { msg.textContent = err.message; btn.disabled = false; }
+      };
+      box.append(form);
+    }
+  }
+
   // ---------------------------------------------------------------- diagnostics
   const post = (p) => fetch(p, { method: "POST" }).then(async (r) => { const b = await r.json().catch(() => ({})); if (!r.ok) throw new Error(b.detail || `${p}: ${r.status}`); return b; });
   const fmtBytes = (b) => b == null ? "–" : b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${(b / 1e6).toFixed(0)} MB`;
@@ -703,7 +882,7 @@
   }
 
   // ---------------------------------------------------------------- orchestration
-  const refreshTab = (name) => ({ overview: refreshOverview, lorawan: refreshLorawan, mesh: refreshMesh, upstreams: refreshUpstreams, helium: refreshHelium, events: refreshEvents, diag: refreshDiag, about: refreshAbout }[name]().catch(console.error));
+  const refreshTab = (name) => ({ overview: refreshOverview, lorawan: refreshLorawan, mesh: refreshMesh, upstreams: refreshUpstreams, helium: refreshHelium, events: refreshEvents, settings: refreshSettings, diag: refreshDiag, about: refreshAbout }[name]().catch(console.error));
   async function refreshAll() { try { await refreshStatus(); await refreshTab(tab); } catch (e) { console.error(e); } }
   // tabs read the status (gateway EUI, node, channels): load it before the first tab renders
   refreshStatus().catch(console.error).finally(() => showTab(tab));

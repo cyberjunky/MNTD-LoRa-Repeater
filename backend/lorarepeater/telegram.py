@@ -21,7 +21,7 @@ from typing import Any
 
 from .config import TelegramConfig
 from .db import Database
-from .meshproto import BROADCAST, node_id_str
+from .meshproto import BROADCAST, node_id_str, parse_node_id
 
 log = logging.getLogger(__name__)
 
@@ -143,7 +143,7 @@ class TelegramBridge:
         elif cmd == "/dm":
             target, _, body = rest.strip().partition(" ")
             try:
-                num = int(target.lstrip("!"), 16) if target.startswith("!") else int(target)
+                num = parse_node_id(target)
             except ValueError:
                 await self._send(chat_id, "usage: /dm !aabbccdd text")
                 return
@@ -157,22 +157,20 @@ class TelegramBridge:
         if not text:
             await self._send(chat_id, "nothing to send")
             return
+        if self.meshsx is None:
+            await self._send(chat_id, "❌ no mesh radio available")
+            return
         try:
-            if self.meshsx is not None:
-                pid = await self.meshsx.send_text(text, to=to)
-                ok = pid is not None
-                ok = True
-            else:
-                ok = False
+            pid = await self.meshsx.send_text(text, to=to)
         except Exception as e:
             await self._send(chat_id, f"send failed: {e}")
             return
-        if ok:
-            self.counters["out"] += 1
-            where = "broadcast" if to == BROADCAST else node_id_str(to)
-            await self._send(chat_id, f"✅ sent to {where}")
-        else:
-            await self._send(chat_id, "❌ no mesh radio available")
+        if pid is None:
+            await self._send(chat_id, "❌ not transmitted (TX off, duty cycle used up, or forwarder not pulling)")
+            return
+        self.counters["out"] += 1
+        where = "broadcast" if to == BROADCAST else node_id_str(to)
+        await self._send(chat_id, f"✅ sent to {where}")
 
     def _status_text(self) -> str:
         if self.meshsx is not None:

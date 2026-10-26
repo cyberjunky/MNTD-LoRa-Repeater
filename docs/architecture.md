@@ -44,6 +44,7 @@ once the SX1302 node worked on the hardware.
    |              hands 869.525/SF11BW250 frames to the mesh engine, sends txpk    |
    |  meshsx.py : Meshtastic node (decrypt, decode, dedup, relay, ACK, NodeInfo)   |
    |  telegram.py: bot bridge (/send, /dm, texts -> chat)                          |
+   |  mqtt.py   : Meshtastic MQTT uplink, Home Assistant (discovery, state, send)   |
    |  timesync.py: timedatectl                                                     |
    |  diag.py   : services, journal, hardware scan, concentrator probe, actions     |
    |  db.py     : SQLite (WAL)          api.py  : FastAPI + WebSocket + static GUI |
@@ -51,6 +52,7 @@ once the SX1302 node worked on the hardware.
           | UDP                          | HTTP :8080            | HTTPS
           v                              v                       v
    ChirpStack / TTN / Helium         browser (web/)         api.telegram.org
+                                                            MQTT brokers
 ```
 
 ### LoRaWAN path
@@ -80,6 +82,12 @@ once the SX1302 node worked on the hardware.
 - Transmissions go back through the forwarder as `txpk` (`imme` for own messages, scheduled on
   the SX1302 counter for relays). The forwarder's `TX_ACK` errors appear in the event log.
 - `telegram.py` posts received texts to a chat and sends `/send` and `/dm` messages.
+- `mqtt.py` uplinks heard frames to a Meshtastic MQTT broker and serves Home Assistant
+  (details in [meshtastic-on-sx1302.md](meshtastic-on-sx1302.md#mqtt)).
+- The GUI sends texts through `POST /api/mesh/send` (`{"text", "to", "channel"}`).
+- The `mqtt` and `telegram` sections can be edited in the GUI's Settings tab. They are saved to
+  `settings.yaml` next to the database (`/etc` is read-only for the service), which wins over
+  the same section in `config.yaml`; saving restarts the backend.
 
 ### Helium path
 

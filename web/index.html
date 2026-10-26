@@ -18,6 +18,7 @@
     <button data-tab="upstreams">Upstreams</button>
     <button data-tab="helium">Helium</button>
     <button data-tab="events">Events</button>
+    <button data-tab="settings">Settings</button>
     <button data-tab="diag">Diagnostics</button>
     <button data-tab="about">About</button>
   </nav>
@@ -79,7 +80,16 @@
       <figure class="card"><figcaption>Packets by port</figcaption><div class="chart" id="chart-mesh-port"></div></figure>
       <figure class="card"><figcaption>Hops used before reaching us</figcaption><div class="chart" id="chart-mesh-hops"></div></figure>
     </div>
-    <div class="card"><h3>Messages</h3><div class="msgs" id="mesh-msgs"></div></div>
+    <div class="card"><h3>Messages</h3><div class="msgs" id="mesh-msgs"></div>
+      <form class="compose" id="mesh-compose" autocomplete="off">
+        <select id="mesh-to" title="destination"></select>
+        <select id="mesh-ch" title="channel"></select>
+        <input id="mesh-text" placeholder="message to the mesh" required>
+        <span class="muted mono" id="mesh-bytes"></span>
+        <button type="submit" id="mesh-send">Send</button>
+        <span class="muted" id="mesh-send-msg"></span>
+      </form></div>
+    <div class="card"><div class="row"><h3>Map</h3><span class="muted" id="mesh-map-info"></span></div><div class="map" id="mesh-map"></div></div>
     <div class="card"><h3>Nodes</h3><table class="tbl" id="mesh-nodes"></table></div>
     <div class="grid2">
       <div class="card"><h3>Links <span class="muted">(who hears whom: direct RF, neighbour info, traceroute)</span></h3><table class="tbl compact" id="mesh-links"></table></div>
@@ -195,6 +205,12 @@
         </div>
       </div>
     </div>
+  </section>
+
+  <!-- ============================ SETTINGS ============================ -->
+  <section id="tab-settings" class="tab">
+    <p class="muted settings-note">Saved settings go to <span class="mono" id="settings-path">settings.yaml</span> next to the database and take precedence over the same section in <span class="mono">/etc/lorarepeater/config.yaml</span>. Saving restarts the backend (a few seconds). Secrets show masked; leave them as they are to keep them.</p>
+    <div id="settings"></div>
   </section>
 
   <!-- ============================ DIAGNOSTICS ========================= -->

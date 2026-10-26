@@ -11,16 +11,18 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, ValidationError
 
 from . import __version__
-from .config import Config
+from .config import GUI_SECTIONS, Config
 from .db import Database
-from .diag import Diag, add_diag_routes
+from .diag import Diag, add_diag_routes, mask_secrets, unmask_secrets
 from .gwmp import GwmpMux
 from .helium import Helium
+from .meshproto import MAX_TEXT_BYTES, node_id_str, parse_node_id
 from .timesync import TimeSync
 
 log = logging.getLogger(__name__)
@@ -32,9 +34,15 @@ def _read_cpu_temp(path: str) -> float | None:
         return None
 
 
+class SendText(BaseModel):
+    text: str
+    to: str | None = None       # "!aabbccdd", a node number, or empty for a broadcast
+    channel: int = 0
+
+
 def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync, helium: Helium,
                extras: dict[str, Any] | None = None) -> FastAPI:
-    """`extras` maps a name to an optional object with a status() method (meshsx, telegram)."""
+    """`extras` maps a name to an optional object with a status() method (meshsx, telegram, mqtt)."""
     extras = extras or {}
     started = time.time()
     sockets: set[WebSocket] = set()
@@ -279,6 +287,50 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync, heli
             "FROM mesh_packets WHERE ts >= ?", (since,))
         return {"hours": hours, "bucket_s": bucket, "totals": totals, "per_bucket": per_bucket,
                 "by_port": by_port, "by_hops": by_hops, "top_nodes": top_nodes, "by_channel": by_channel}
+
+    @app.post("/api/mesh/send")
+    async def mesh_send(req: SendText) -> dict[str, Any]:
+        meshsx = extras.get("meshsx")
+        if meshsx is None:
+            raise HTTPException(503, "the Meshtastic node is disabled (meshsx.enabled)")
+        text = req.text.strip()
+        if not text or len(text.encode()) > MAX_TEXT_BYTES:
+            raise HTTPException(422, f"text must be 1 to {MAX_TEXT_BYTES} bytes")
+        if not 0 <= req.channel < len(meshsx.channels):
+            raise HTTPException(422, f"no channel {req.channel}")
+        try:
+            to = parse_node_id(req.to)
+        except ValueError:
+            raise HTTPException(422, f"bad node id {req.to!r}") from None
+        pid = await meshsx.send_text(text, to=to, channel=req.channel)
+        if pid is None:
+            raise HTTPException(503, "not transmitted: TX off, duty cycle used up, or forwarder not pulling")
+        return {"packet_id": pid, "to": node_id_str(to)}
+
+    # -- settings (sections editable in the GUI, stored next to the database) ---------
+
+    def _settings() -> dict[str, Any]:
+        saved = cfg.saved_settings()
+        return {name: {"value": mask_secrets(getattr(cfg, name).model_dump(mode="json")),
+                       "source": str(cfg.settings_path) if name in saved else "config.yaml"}
+                for name in GUI_SECTIONS}
+
+    @app.get("/api/settings")
+    async def settings() -> dict[str, Any]:
+        return _settings()
+
+    @app.put("/api/settings/{section}")
+    async def save_settings(section: str, body: dict[str, Any]) -> dict[str, Any]:
+        if section not in GUI_SECTIONS:
+            raise HTTPException(404, f"unknown section {section!r}")
+        try:
+            value = GUI_SECTIONS[section].model_validate(unmask_secrets(body, getattr(cfg, section).model_dump(mode="json")))
+        except ValidationError as e:
+            raise HTTPException(422, "; ".join(f"{'.'.join(map(str, x['loc']))}: {x['msg']}" for x in e.errors())) from None
+        cfg.save_section(section, value)
+        await db.add_event("system", "info", f"{section} settings saved from the GUI; restarting")
+        restart_self()
+        return {"ok": True, "restarting": True}
 
     # -- diagnostics ------------------------------------------------------------------
 

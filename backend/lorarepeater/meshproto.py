@@ -29,6 +29,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 BROADCAST = 0xFFFFFFFF
 HEADER_LEN = 16
 MAX_HOPS = 7
+MAX_TEXT_BYTES = 230   # Data.payload limit (DATA_PAYLOAD_LEN 233) minus the protobuf framing
 DEFAULT_PSK = bytes([0xD4, 0xF1, 0xBB, 0x3A, 0x20, 0x29, 0x07, 0x59, 0xF0, 0xBC, 0xFF, 0xAB, 0xCF, 0x4E, 0x69, 0x01])
 
 
@@ -142,3 +143,13 @@ def airtime_ms(sf: int, bw_hz: int, cr: int, payload_len: int, preamble: int = 1
 
 def node_id_str(num: int) -> str:
     return f"!{num & 0xFFFFFFFF:08x}"
+
+
+def parse_node_id(value: str | int | None) -> int:
+    """'!aabbccdd', a decimal node number, or None/''/'broadcast' -> node number."""
+    if value is None or value in ("", "broadcast", "^all"):
+        return BROADCAST
+    if isinstance(value, int):
+        return value & 0xFFFFFFFF
+    value = value.strip()
+    return int(value[1:], 16) if value.startswith("!") else int(value)

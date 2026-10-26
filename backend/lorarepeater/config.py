@@ -4,6 +4,7 @@ service can start with an empty file."""
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field
@@ -76,6 +77,41 @@ class TelegramConfig(BaseModel):
     poll_timeout_s: int = 30
 
 
+class MqttBroker(BaseModel):
+    enabled: bool = False
+    host: str = ""
+    port: int = 1883
+    username: str = ""
+    password: str = ""
+    tls: bool = False
+
+
+class MeshtasticMqttConfig(MqttBroker):
+    """Uplink like a Meshtastic node with MQTT enabled: the encrypted frames as ServiceEnvelope
+    protobufs on <root_topic>/2/e/<channel>/<our node id>. Senders that cleared 'OK to MQTT'
+    are respected."""
+
+    host: str = "mqtt.meshtastic.org"
+    username: str = "meshdev"
+    password: str = "large4cats"
+    root_topic: str = "msh/EU_868"
+    channels: list[str] = Field(default_factory=lambda: ["LongFast"])   # names from meshsx.channels
+
+
+class HomeAssistantMqttConfig(MqttBroker):
+    """JSON on <base_topic>/..., Home Assistant discovery, and sending mesh texts from HA."""
+
+    base_topic: str = "lorarepeater"
+    discovery_prefix: str = "homeassistant"
+    node_entities: bool = True      # a device per heard node (battery, SNR, environment, position)
+    allow_send: bool = True         # accept texts on <base_topic>/send
+
+
+class MqttConfig(BaseModel):
+    meshtastic: MeshtasticMqttConfig = Field(default_factory=MeshtasticMqttConfig)
+    homeassistant: HomeAssistantMqttConfig = Field(default_factory=HomeAssistantMqttConfig)
+
+
 class HeliumConfig(BaseModel):
     """Helium view: gateway-rs on this box (key in the ATECC608) plus public Helium/Solana data."""
 
@@ -106,13 +142,38 @@ class Config(BaseModel):
     gwmp: GwmpConfig = Field(default_factory=GwmpConfig)
     meshsx: MeshSxConfig = Field(default_factory=MeshSxConfig)
     telegram: TelegramConfig = Field(default_factory=TelegramConfig)
+    mqtt: MqttConfig = Field(default_factory=MqttConfig)
     helium: HeliumConfig = Field(default_factory=HeliumConfig)
     web: WebConfig = Field(default_factory=WebConfig)
     hardware: HardwareConfig = Field(default_factory=HardwareConfig)
 
+    @property
+    def settings_path(self) -> Path:
+        """Sections saved from the GUI. /etc is read-only for the service, the data dir is not."""
+        return self.db_path.parent / "settings.yaml"
+
     @classmethod
     def load(cls, path: str | Path | None) -> Config:
-        if path is None:
-            return cls()
-        raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
-        return cls.model_validate(raw)
+        raw = (yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}) if path else {}
+        cfg = cls.model_validate(raw)
+        if saved := cfg.saved_settings():
+            raw.update({k: v for k, v in saved.items() if k in GUI_SECTIONS})
+            cfg = cls.model_validate(raw)
+        return cfg
+
+    def saved_settings(self) -> dict[str, Any]:
+        if not self.settings_path.is_file():
+            return {}
+        return yaml.safe_load(self.settings_path.read_text(encoding="utf-8")) or {}
+
+    def save_section(self, section: str, value: BaseModel) -> None:
+        """Store a GUI-edited section; it then wins over the same section in config.yaml."""
+        saved = {**self.saved_settings(), section: value.model_dump(mode="json")}
+        self.settings_path.parent.mkdir(parents=True, exist_ok=True)
+        self.settings_path.write_text(yaml.safe_dump(saved, sort_keys=False), encoding="utf-8")
+        self.settings_path.chmod(0o600)   # broker passwords, bot token
+        setattr(self, section, value)
+
+
+# sections the Settings tab edits
+GUI_SECTIONS: dict[str, type[BaseModel]] = {"mqtt": MqttConfig, "telegram": TelegramConfig}

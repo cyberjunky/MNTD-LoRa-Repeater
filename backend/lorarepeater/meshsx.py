@@ -11,7 +11,8 @@ This engine turns the box into a Meshtastic ROUTER_LATE (or ROUTER / CLIENT_MUTE
   neighbour info, map reports, waypoints, paxcounter, store-and-forward, ...), keeps a node
   table and a link graph (who hears whom, with SNR),
 * originates NodeInfo (and optionally a fixed Position), text messages and ACKs,
-* calls registered listeners for received text, which the Telegram bridge uses.
+* calls registered listeners for received text (Telegram, Home Assistant) and for every frame
+  on a known channel (the Meshtastic MQTT uplink).
 
 It is deliberately a *repeater* implementation: no traceroute, no store-and-forward, no PKI
 direct messages (those are relayed unread), no admin channel.
@@ -38,6 +39,7 @@ from .meshproto import (
     BROADCAST,
     HEADER_LEN,
     MAX_HOPS,
+    MAX_TEXT_BYTES,
     Header,
     airtime_ms,
     channel_hash,
@@ -50,6 +52,8 @@ from .meshproto import (
 log = logging.getLogger(__name__)
 
 TextListener = Callable[[dict[str, Any]], None]
+# (frame as on air, header, channel, {"rx_time", "rssi", "snr", "ok_to_mqtt"}); rssi/snr None when sent by us
+FrameListener = Callable[[bytes, "Header", "Channel", dict[str, Any]], None]
 
 
 def _pb():
@@ -90,6 +94,7 @@ class MeshSxEngine:
         self.seen: dict[tuple[int, int], float] = {}
         self.tx_log: deque[tuple[float, float]] = deque()   # (time, airtime_ms)
         self.listeners: list[TextListener] = []
+        self.frame_listeners: list[FrameListener] = []
         self.counters = {"rx": 0, "decoded": 0, "relayed": 0, "dropped_dup": 0, "dropped_hops": 0,
                          "dropped_duty": 0, "tx": 0, "text_rx": 0, "undecodable": 0}
         self.last_rx = 0.0
@@ -117,6 +122,16 @@ class MeshSxEngine:
 
     def add_text_listener(self, fn: TextListener) -> None:
         self.listeners.append(fn)
+
+    def add_frame_listener(self, fn: FrameListener) -> None:
+        self.frame_listeners.append(fn)
+
+    def _frame_heard(self, raw: bytes, hdr: Header, chan: Channel, info: dict[str, Any]) -> None:
+        for fn in self.frame_listeners:
+            try:
+                fn(raw, hdr, chan, info)
+            except Exception as e:  # a broken uplink must not stop the mesh
+                log.warning("frame listener failed: %s", e)
 
     # -- receive -----------------------------------------------------------------
 
@@ -162,6 +177,7 @@ class MeshSxEngine:
         decoded = None
         if chan is not None:
             decoded = self._decode(chan, hdr, raw[HEADER_LEN:])
+        ok_to_mqtt = decoded.pop("ok_to_mqtt") if decoded is not None else True
         if decoded is not None:
             self.counters["decoded"] += 1
             row.update(decoded)
@@ -177,6 +193,7 @@ class MeshSxEngine:
         pkt_id = await self.db.add_mesh_packet(row)
         if decoded is not None and not dup:
             await self._after_decode(chan, hdr, decoded, rssi, snr)
+            self._frame_heard(raw, hdr, chan, {"rx_time": row["rx_time"], "rssi": rssi, "snr": snr, "ok_to_mqtt": ok_to_mqtt})
         await self._maybe_relay(hdr, raw, rx, pkt_id, dup)
 
     def _decode(self, chan: Channel, hdr: Header, body: bytes) -> dict[str, Any] | None:
@@ -193,7 +210,9 @@ class MeshSxEngine:
             port = portnums_pb2.PortNum.Name(data.portnum)
         except ValueError:
             port = str(data.portnum)
-        out: dict[str, Any] = {"portnum": port, "payload": None, "text": None, "priority": None}
+        # firmware >= 2.5: a sender that cleared "OK to MQTT" sets the bitfield without bit 0
+        ok_to_mqtt = not data.HasField("bitfield") or bool(data.bitfield & 1)
+        out: dict[str, Any] = {"portnum": port, "payload": None, "text": None, "priority": None, "ok_to_mqtt": ok_to_mqtt}
         meta = {k: v for k, v in (("requestId", data.request_id), ("replyId", data.reply_id),
                                   ("wantResponse", data.want_response), ("emoji", data.emoji)) if v}
         try:
@@ -332,20 +351,23 @@ class MeshSxEngine:
         return (int.from_bytes(os.urandom(4), "little") | 0x80000000) & 0xFFFFFFFF  # never 0
 
     async def _send_data(self, data: Any, to: int, chan: Channel, want_ack: bool = False, kind: str = "tx",
-                         hop_limit: int | None = None, text: str | None = None) -> int:
+                         hop_limit: int | None = None, text: str | None = None) -> int | None:
+        """Returns the packet id, or None when it was not transmitted (TX off, duty cycle, forwarder)."""
         pid = self._new_packet_id()
         hops = min(MAX_HOPS, self.cfg.hop_limit if hop_limit is None else hop_limit)
         hdr = Header(to=to, sender=self.node_num, packet_id=pid, hop_limit=hops, hop_start=hops,
                      want_ack=want_ack, channel_hash=chan.hash, relay_node=self.my_byte)
-        body = crypt(chan.key, pid, self.node_num, data.SerializeToString())
+        frame = hdr.pack() + crypt(chan.key, pid, self.node_num, data.SerializeToString())
         self.seen[(self.node_num, pid)] = time.time()
-        await self.transmit(hdr.pack() + body, kind=kind, of=hdr, text=text)
+        if not await self.transmit(frame, kind=kind, of=hdr, text=text):
+            return None
+        self._frame_heard(frame, hdr, chan, {"rx_time": int(time.time()), "rssi": None, "snr": None, "ok_to_mqtt": True})
         return pid
 
-    async def send_text(self, text: str, to: int = BROADCAST, channel: int = 0, want_ack: bool = False) -> int:
+    async def send_text(self, text: str, to: int = BROADCAST, channel: int = 0, want_ack: bool = False) -> int | None:
         mesh_pb2, portnums_pb2, _, _ = _pb()
         chan = self.channels[channel]
-        data = mesh_pb2.Data(portnum=portnums_pb2.PortNum.Value("TEXT_MESSAGE_APP"), payload=text.encode("utf-8")[:230])
+        data = mesh_pb2.Data(portnum=portnums_pb2.PortNum.Value("TEXT_MESSAGE_APP"), payload=text.encode("utf-8")[:MAX_TEXT_BYTES])
         return await self._send_data(data, to, chan, want_ack=want_ack, kind="text", text=text)
 
     async def send_ack(self, to: int, request_id: int, chan: Channel) -> None:
@@ -401,9 +423,12 @@ class MeshSxEngine:
             self.seen = {k: v for k, v in self.seen.items() if v > cutoff}
 
     def _my_node_row(self) -> dict[str, Any]:
-        return {"num": self.node_num, "node_id": node_id_str(self.node_num), "long_name": self.cfg.long_name,
-                "short_name": self.cfg.short_name, "hw_model": "SX1302 (MNTD)", "role": self.cfg.role,
-                "last_heard": time.time(), "hops_away": 0}
+        row = {"num": self.node_num, "node_id": node_id_str(self.node_num), "long_name": self.cfg.long_name,
+               "short_name": self.cfg.short_name, "hw_model": "SX1302 (MNTD)", "role": self.cfg.role,
+               "last_heard": time.time(), "hops_away": 0}
+        if self.cfg.position:   # exact site position for the local map; the air gets the coarsened one
+            row.update(lat=self.cfg.position.lat, lon=self.cfg.position.lon, alt=self.cfg.position.alt)
+        return row
 
     # -- status ------------------------------------------------------------------
 
@@ -411,7 +436,8 @@ class MeshSxEngine:
         now = time.time()
         used = sum(a for t, a in self.tx_log if now - t <= 3600)
         return {
-            "enabled": self.cfg.enabled, "node_id": node_id_str(self.node_num), "long_name": self.cfg.long_name,
+            "enabled": self.cfg.enabled, "node_num": self.node_num, "node_id": node_id_str(self.node_num),
+            "long_name": self.cfg.long_name, "max_text_bytes": MAX_TEXT_BYTES,
             "role": self.cfg.role, "freq_mhz": self.cfg.freq_mhz, "datr": self.cfg.datr,
             "channels": [c.name for c in self.channels], "tx_enabled": self.cfg.tx_enabled,
             "duty_used_pct_1h": round(used / 36000.0, 3), "duty_limit_pct": self.cfg.duty_cycle_pct,

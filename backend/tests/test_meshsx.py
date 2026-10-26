@@ -190,3 +190,21 @@ async def test_own_frame_echo_is_not_stored(engine):
     await settle(eng)
     assert eng.counters["self_echo"] == 1 and eng.counters["rx"] == 1
     assert await db.fetch("SELECT * FROM mesh_packets WHERE direction = 'rx'") == []
+
+
+async def test_frame_listener_ok_to_mqtt_and_own_sends(engine):
+    eng, mux, _ = engine
+    frames = []
+    eng.add_frame_listener(lambda raw, hdr, chan, info: frames.append((raw, hdr, chan.name, info)))
+    eng.on_rxpk(rxpk(make_frame("public")))
+    # firmware >= 2.5 with "OK to MQTT" off: bitfield present, bit 0 clear
+    data = mesh_pb2.Data(portnum=portnums_pb2.PortNum.Value("TEXT_MESSAGE_APP"), payload=b"private", bitfield=0)
+    hdr = Header(to=BROADCAST, sender=OTHER, packet_id=0x77, hop_limit=3, hop_start=3, channel_hash=8)
+    eng.on_rxpk(rxpk(hdr.pack() + crypt(KEY, 0x77, OTHER, data.SerializeToString())))
+    await settle(eng)
+    assert [f[3]["ok_to_mqtt"] for f in frames] == [True, False]
+    assert frames[0][2] == "LongFast" and frames[0][3]["snr"] == 5.5 and frames[0][0] == make_frame("public")
+    pid = await eng.send_text("from us")
+    assert frames[-1][1].packet_id == pid and frames[-1][3]["rssi"] is None
+    mux.pulling = False      # not transmitted: no packet id, nothing for the uplink
+    assert await eng.send_text("lost") is None and frames[-1][1].packet_id == pid

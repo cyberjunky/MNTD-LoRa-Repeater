@@ -147,3 +147,24 @@ button:disabled { opacity: .5; cursor: wait; }
 .card:has(> .tbl.compact) { overflow-x: auto; }   /* a wide compact table scrolls inside its card */
 .map { height: 460px; border-radius: 6px; border: 1px solid var(--line); }
 .leaflet-popup-content { font: 13px/1.45 system-ui, sans-serif; }
+
+/* send to the mesh */
+.compose { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.compose[hidden], .compose select[hidden], .map[hidden] { display: none; }
+.compose input { flex: 1 1 260px; min-width: 0; }
+.compose button { font: inherit; padding: 4px 14px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; }
+.compose button:disabled { opacity: .5; cursor: not-allowed; }
+.compose .over { color: var(--critical); }
+
+/* settings */
+.settings-note { margin: 0 0 12px; font-size: 13px; }
+.settings fieldset { border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px 14px; margin: 0 0 12px; min-width: 0; }
+.settings legend { font-weight: 600; font-size: 13px; padding: 0 6px; }
+.settings fieldset > p { margin: 0 0 10px; font-size: 12px; }
+.fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px 16px; }
+.field { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--text-secondary); }
+.field.check { flex-direction: row; align-items: center; gap: 6px; padding-top: 16px; font-size: 13px; }
+.field input:not([type=checkbox]) { width: 100%; }
+.settings details { margin-top: 10px; font-size: 13px; }
+.settings summary { cursor: pointer; color: var(--accent); margin-bottom: 6px; }
+.settings .row button { border-color: var(--accent); }

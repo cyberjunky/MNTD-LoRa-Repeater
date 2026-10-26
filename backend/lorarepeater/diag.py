@@ -104,6 +104,15 @@ def mask_secrets(obj: Any, key: str = "") -> Any:
     return obj
 
 
+def unmask_secrets(new: Any, old: Any, key: str = "") -> Any:
+    """Inverse of mask_secrets for a form sent back: a secret still showing its mask keeps the old value."""
+    if isinstance(new, dict) and isinstance(old, dict):
+        return {k: unmask_secrets(v, old.get(k), k) for k, v in new.items()}
+    if isinstance(new, str) and isinstance(old, str) and new == mask_secrets(old, key):
+        return old
+    return new
+
+
 def undervoltage() -> bool | None:
     """The firmware's under-voltage alarm via the rpi_volt hwmon sensor (readable without root,
     unlike `vcgencmd`, which needs /dev/vcio)."""

@@ -63,3 +63,11 @@ def test_airtime_longfast():
     # SF12 / 125 kHz enables low-data-rate optimisation automatically
     assert airtime_ms(12, 125_000, 8, 32) > airtime_ms(12, 125_000, 8, 32, ldro=False)
     assert node_id_str(0x0A0B0C0D) == "!0a0b0c0d"
+
+
+def test_parse_node_id():
+    from lorarepeater.meshproto import BROADCAST, parse_node_id
+    assert parse_node_id("!0a0b0c42") == 0x0A0B0C42 == parse_node_id(str(0x0A0B0C42))
+    assert parse_node_id(None) == parse_node_id("") == parse_node_id("broadcast") == BROADCAST
+    with pytest.raises(ValueError):
+        parse_node_id("!zz")
