@@ -157,8 +157,7 @@ class Config(BaseModel):
         raw = (yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}) if path else {}
         cfg = cls.model_validate(raw)
         if saved := cfg.saved_settings():
-            raw.update({k: v for k, v in saved.items() if k in GUI_SECTIONS})
-            cfg = cls.model_validate(raw)
+            cfg = cls.model_validate(deep_merge(raw, {k: v for k, v in saved.items() if k in GUI_SECTIONS}))
         return cfg
 
     def saved_settings(self) -> dict[str, Any]:
@@ -166,14 +165,28 @@ class Config(BaseModel):
             return {}
         return yaml.safe_load(self.settings_path.read_text(encoding="utf-8")) or {}
 
-    def save_section(self, section: str, value: BaseModel) -> None:
-        """Store a GUI-edited section; it then wins over the same section in config.yaml."""
-        saved = {**self.saved_settings(), section: value.model_dump(mode="json")}
+    def merged_section(self, section: str, changes: dict[str, Any]) -> BaseModel:
+        """The section as it would be with `changes` applied (raises ValidationError)."""
+        return GUI_SECTIONS[section].model_validate(deep_merge(getattr(self, section).model_dump(mode="json"), changes))
+
+    def save_section(self, section: str, changes: dict[str, Any]) -> None:
+        """Store the fields edited in the GUI; they win over the same keys in config.yaml, keys
+        the GUI does not show (channel keys, radio settings) stay with config.yaml."""
+        value = self.merged_section(section, changes)
+        saved = self.saved_settings()
+        saved[section] = deep_merge(saved.get(section) or {}, changes)
         self.settings_path.parent.mkdir(parents=True, exist_ok=True)
         self.settings_path.write_text(yaml.safe_dump(saved, sort_keys=False), encoding="utf-8")
         self.settings_path.chmod(0o600)   # broker passwords, bot token
         setattr(self, section, value)
 
 
+def deep_merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
+    out = dict(base)
+    for k, v in over.items():
+        out[k] = deep_merge(out[k], v) if isinstance(v, dict) and isinstance(out.get(k), dict) else v
+    return out
+
+
 # sections the Settings tab edits
-GUI_SECTIONS: dict[str, type[BaseModel]] = {"mqtt": MqttConfig, "telegram": TelegramConfig}
+GUI_SECTIONS: dict[str, type[BaseModel]] = {"meshsx": MeshSxConfig, "mqtt": MqttConfig, "telegram": TelegramConfig}

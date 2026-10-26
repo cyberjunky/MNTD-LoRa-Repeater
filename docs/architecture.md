@@ -85,9 +85,11 @@ once the SX1302 node worked on the hardware.
 - `mqtt.py` uplinks heard frames to a Meshtastic MQTT broker and serves Home Assistant
   (details in [meshtastic-on-sx1302.md](meshtastic-on-sx1302.md#mqtt)).
 - The GUI sends texts through `POST /api/mesh/send` (`{"text", "to", "channel"}`).
-- The `mqtt` and `telegram` sections can be edited in the GUI's Settings tab. They are saved to
-  `settings.yaml` next to the database (`/etc` is read-only for the service), which wins over
-  the same section in `config.yaml`; saving restarts the backend.
+- The Settings tab edits the Meshtastic node basics (name, role, TX, site position) and the
+  `mqtt` and `telegram` sections. Only the fields on the form are saved, to `settings.yaml` next
+  to the database (`/etc` is read-only for the service), and they win over the same keys in
+  `config.yaml`; channel keys and the radio preset stay in `config.yaml`. Saving restarts the
+  backend.
 
 ### Helium path
 

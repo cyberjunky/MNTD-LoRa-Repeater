@@ -90,7 +90,7 @@ async def test_settings_roundtrip_keeps_masked_secrets(client):
     from lorarepeater.config import Config
 
     s = (await client.get("/api/settings")).json()
-    assert set(s) == {"mqtt", "telegram"} and s["mqtt"]["source"] == "config.yaml"
+    assert set(s) == {"meshsx", "mqtt", "telegram"} and s["mqtt"]["source"] == "config.yaml"
     mqtt = s["mqtt"]["value"]
     assert mqtt["meshtastic"]["password"].startswith("••") and mqtt["meshtastic"]["password"] != "large4cats"
     mqtt["meshtastic"]["enabled"] = True
@@ -98,12 +98,31 @@ async def test_settings_roundtrip_keeps_masked_secrets(client):
     r = await client.put("/api/settings/mqtt", json=mqtt)
     assert r.status_code == 200 and r.json()["restarting"]
     s = (await client.get("/api/settings")).json()
-    assert s["mqtt"]["source"].endswith("settings.yaml")
-    # what the service loads after the restart: config.yaml (none here) with the saved section on top
-    db_path = s["mqtt"]["source"].replace("settings.yaml", "api.db")
-    cfg = Config.load(None).model_copy(update={"db_path": __import__("pathlib").Path(db_path)})
+    path = s["mqtt"]["source"].removeprefix("config.yaml + ")
+    assert path.endswith("settings.yaml")
+    cfg = Config(db_path=__import__("pathlib").Path(path).parent / "api.db")
     saved = cfg.saved_settings()["mqtt"]
     assert saved["meshtastic"]["password"] == "large4cats" and saved["meshtastic"]["enabled"] is True
     assert saved["homeassistant"]["password"] == "secret!" and saved["homeassistant"]["host"] == "ha.local"
     assert (await client.put("/api/settings/mqtt", json={"meshtastic": {"port": "x"}})).status_code == 422
     assert (await client.put("/api/settings/gwmp", json={})).status_code == 404
+
+
+async def test_settings_save_only_the_form_fields(tmp_path):
+    import yaml
+
+    from lorarepeater.config import Config
+
+    conf = tmp_path / "config.yaml"
+    conf.write_text(yaml.safe_dump({"db_path": str(tmp_path / "x.db"), "meshsx": {
+        "long_name": "Old", "channels": [{"name": "Private", "psk": "A" * 43 + "="}]}}), encoding="utf-8")
+    cfg = Config.load(conf)
+    cfg.save_section("meshsx", {"long_name": "New", "position": {"lat": 52.09, "lon": 5.12, "alt": 0}})
+    assert cfg.saved_settings() == {"meshsx": {"long_name": "New", "position": {"lat": 52.09, "lon": 5.12, "alt": 0}}}
+    # config.yaml keeps the keys the GUI does not show, and later edits there still apply
+    conf.write_text(conf.read_text(encoding="utf-8").replace("Private", "Other"), encoding="utf-8")
+    cfg = Config.load(conf)
+    assert cfg.meshsx.long_name == "New" and cfg.meshsx.position.lat == 52.09
+    assert cfg.meshsx.channels[0].name == "Other" and len(cfg.meshsx.channels[0].psk) == 44
+    cfg.save_section("meshsx", {"position": None})
+    assert Config.load(conf).meshsx.position is None and Config.load(conf).meshsx.long_name == "New"

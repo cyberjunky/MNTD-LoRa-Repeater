@@ -449,7 +449,7 @@
   async function refreshMeshMap(nodes, links) {
     const box = $("#mesh-map"), info = $("#mesh-map-info"), placed = nodes.filter((n) => n.lat != null && n.lon != null);
     const me = status?.meshsx?.node_num;
-    info.textContent = `${placed.length} of ${nodes.length} nodes report a position${placed.some((n) => n.num === me) ? "" : " · set meshsx.position to place this box"}`;
+    info.textContent = `${placed.length} of ${nodes.length} nodes report a position${placed.some((n) => n.num === me) ? "" : " · set the position in Settings → Meshtastic node to place this box"}`;
     box.hidden = !placed.length;
     if (!placed.length) return;
     try { await loadLeaflet(); } catch (e) { box.textContent = e.message; return; }
@@ -651,6 +651,16 @@
   const BROKER = [["enabled", "Enabled", "bool"], ["host", "Broker host", "text"], ["port", "Port", "int"],
     ["username", "Username", "text"], ["password", "Password", "secret"], ["tls", "TLS", "bool"]];
   const SETTINGS = {
+    meshsx: { title: "Meshtastic node", groups: [
+      { key: null, title: "Node", help: "How the box shows up on the mesh. Channels, keys and the radio preset stay in config.yaml (the preset is tied to the packet forwarder configuration).",
+        fields: [["long_name", "Long name", "text"], ["short_name", "Short name (4)", "text"],
+          ["role", "Role", "select", ["ROUTER_LATE", "ROUTER", "CLIENT_MUTE"]], ["hop_limit", "Hop limit", "int"],
+          ["tx_enabled", "Transmit (relay and send)", "bool"], ["tx_power_dbm", "TX power (dBm)", "int"],
+          ["nodeinfo_interval_s", "NodeInfo every (s)", "int"]] },
+      { key: "position", title: "Position", help: "The site of the box (there is no GPS). The map uses it as is; the mesh only gets it when broadcasting is on, coarsened to the precision below (16 bits is about 1.5 km, 32 is exact). Leave latitude empty for no position.",
+        fields: [["lat", "Latitude", "float"], ["lon", "Longitude", "float"], ["alt", "Altitude (m)", "float"]] },
+      { key: null, title: "", fields: [["position_broadcast", "Broadcast the position", "bool"], ["position_precision_bits", "Precision (bits)", "int"]] },
+    ] },
     mqtt: { title: "MQTT", groups: [
       { key: "meshtastic", title: "Meshtastic uplink", help: "Publishes what this node hears, encrypted as on air, like a Meshtastic node with MQTT enabled (ServiceEnvelope on <root>/2/e/<channel>/<node id>). Senders that turned off “OK to MQTT” are skipped. The default is the public Meshtastic broker.",
         fields: [...BROKER, ["root_topic", "Root topic", "text"], ["channels", "Channels to uplink", "list", "names from meshsx.channels, comma separated"]] },
@@ -692,8 +702,10 @@ actions:
     const id = `set-${section}-${path}`.replace(/\./g, "-"), v = settingsVal(section, path);
     let input;
     if (type === "bool") { input = el("input", { type: "checkbox", id }); input.checked = !!v; }
+    else if (type === "select") { input = el("select", { id }); hint.forEach((o) => input.append(el("option", { value: o }, o))); input.value = v; }
     else {
-      input = el("input", { id, type: type === "int" || type === "intnull" ? "number" : "text", class: type === "secret" ? "mono" : "", spellcheck: "false" });
+      input = el("input", { id, type: ["int", "intnull", "float"].includes(type) ? "number" : "text", class: type === "secret" ? "mono" : "", spellcheck: "false" });
+      if (type === "float") input.step = "any";
       input.value = Array.isArray(v) ? v.join(", ") : v ?? "";
       if (hint) input.placeholder = hint;
     }
@@ -701,15 +713,17 @@ actions:
     return el("label", { class: type === "bool" ? "field check" : "field", for: id }, ...(type === "bool" ? [input, label] : [el("span", {}, label), input]));
   }
   function readForm(form) {
-    const out = structuredClone(SET_STATE.data[form.dataset.section].value);
+    const out = {};     // only the fields on the form; the server merges them over the section
     const csv = (raw) => raw.split(",").map((x) => x.trim()).filter(Boolean);
-    for (const i of form.querySelectorAll("input[data-path]")) {
+    for (const i of form.querySelectorAll("[data-path]")) {
       const t = i.dataset.type, raw = i.value.trim();
-      const v = t === "bool" ? i.checked : t === "int" ? Number(raw) : t === "intnull" ? (raw ? Number(raw) : null)
+      const v = t === "bool" ? i.checked : t === "int" ? Number(raw) : t === "intnull" || t === "float" ? (raw ? Number(raw) : null)
         : t === "list" ? csv(raw) : t === "intlist" ? csv(raw).map(Number) : raw;
       const keys = i.dataset.path.split("."), last = keys.pop();
-      keys.reduce((o, k) => o[k], out)[last] = v;
+      keys.reduce((o, k) => (o[k] ??= {}), out)[last] = v;
     }
+    if (out.position && out.position.lat == null) out.position = null;   // no site position
+    if (out.position && out.position.alt == null) out.position.alt = 0;
     return out;
   }
   async function refreshSettings() {
@@ -718,12 +732,12 @@ actions:
     const box = $("#settings"); box.innerHTML = "";
     for (const [section, spec] of Object.entries(SETTINGS)) {
       const src = SET_STATE.data[section].source;
-      if (src !== "config.yaml") $("#settings-path").textContent = src;
+      if (src !== "config.yaml") $("#settings-path").textContent = src.replace("config.yaml + ", "");
       const form = el("form", { class: "card settings", "data-section": section, autocomplete: "off" },
         el("div", { class: "row" }, el("h3", {}, spec.title), el("span", { class: "muted" }, `from ${src}`),
           el("span", { class: "muted save-msg" }), el("button", { type: "submit" }, "Save and restart")));
       for (const g of spec.groups) {
-        const fs = el("fieldset", {}, el("legend", {}, g.title), el("p", { class: "muted" }, g.help),
+        const fs = el("fieldset", {}, ...(g.title ? [el("legend", {}, g.title)] : []), ...(g.help ? [el("p", { class: "muted" }, g.help)] : []),
           el("div", { class: "fields" }, ...g.fields.map((f) => fieldEl(section, g.key ? `${g.key}.${f[0]}` : f[0], f))));
         if (g.extra) fs.append(el("div", { html: g.extra() }));
         form.append(fs);

@@ -39,7 +39,8 @@ not affiliated with or endorsed by either company; the icon is an original drawi
   MQTT on) and **Home Assistant** discovery (gateway sensors, a device per node, a "Mesh text"
   event, a "Mesh broadcast" notify entity to send from automations).
 - **Telegram bridge**: mesh texts into a chat or channel, `/send` and `/dm` back to the mesh.
-- **Settings tab** for MQTT and Telegram; stored next to the database, applied by a restart.
+- **Settings tab** for the Meshtastic node (name, role, TX, site position), MQTT and Telegram;
+  stored next to the database, applied by a restart.
 - **Helium**: Helium's gateway-rs runs with the hotspot key from the secure element, so the box
   stays on Helium alongside TTN. The Helium tab shows the hotspot's on-chain record
   (location, gain, active state), lifetime/claimed/unclaimed HNT and IOT, the full claim

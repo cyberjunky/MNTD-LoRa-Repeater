@@ -61,8 +61,8 @@ zero-cost hops, retransmission of our own messages when no ACK comes back.
 
 The Meshtastic tab has a message box (broadcast or a known node, and the channel when more
 than one is configured; at most 230 bytes of UTF-8) and a map of every node whose position
-was heard, with the RF and neighbour-info links between them. Put the site in
-`meshsx.position` to place the box itself; the map uses the exact position, the air only the
+was heard, with the RF and neighbour-info links between them. Set the site in Settings → Meshtastic node
+(`meshsx.position`) to place the box itself; the map uses the exact position, the air only the
 coarsened one, and only when `position_broadcast` is on.
 
 ## MQTT

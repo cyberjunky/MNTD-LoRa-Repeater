@@ -312,7 +312,7 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync, heli
     def _settings() -> dict[str, Any]:
         saved = cfg.saved_settings()
         return {name: {"value": mask_secrets(getattr(cfg, name).model_dump(mode="json")),
-                       "source": str(cfg.settings_path) if name in saved else "config.yaml"}
+                       "source": f"config.yaml + {cfg.settings_path}" if name in saved else "config.yaml"}
                 for name in GUI_SECTIONS}
 
     @app.get("/api/settings")
@@ -323,11 +323,11 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync, heli
     async def save_settings(section: str, body: dict[str, Any]) -> dict[str, Any]:
         if section not in GUI_SECTIONS:
             raise HTTPException(404, f"unknown section {section!r}")
+        changes = unmask_secrets(body, getattr(cfg, section).model_dump(mode="json"))
         try:
-            value = GUI_SECTIONS[section].model_validate(unmask_secrets(body, getattr(cfg, section).model_dump(mode="json")))
+            cfg.save_section(section, changes)
         except ValidationError as e:
             raise HTTPException(422, "; ".join(f"{'.'.join(map(str, x['loc']))}: {x['msg']}" for x in e.errors())) from None
-        cfg.save_section(section, value)
         await db.add_event("system", "info", f"{section} settings saved from the GUI; restarting")
         restart_self()
         return {"ok": True, "restarting": True}
