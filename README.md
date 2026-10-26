@@ -1,5 +1,8 @@
 # MNTD LoRa Repeater <img src="web/icon.svg" width="80" align="right" alt="MNTD LoRa Repeater icon">
 
+[![Donate via PayPal](https://img.shields.io/badge/Donate-PayPal-blue.svg?style=for-the-badge&logo=paypal)](https://www.paypal.me/cyberjunkynl/)
+[![Sponsor on GitHub](https://img.shields.io/badge/Sponsor-GitHub-red.svg?style=for-the-badge&logo=github)](https://github.com/sponsors/cyberjunky)
+
 Give a retired **MNTD Goldspot / RAK Hotspot Miner V2** Helium hotspot a second life as a
 **LoRaWAN gateway + Meshtastic repeater** with a Python backend, a database of everything it
 hears and relays, and a web dashboard.
@@ -104,6 +107,16 @@ and the backend sends NodeInfo beacons. The LP5562 LED driver footprint on this 
 unpopulated and the GNSS is not wired to the Pi, so both were removed from the design. Still
 to verify on air: Meshtastic receive and relay (bench procedure in
 [docs/meshtastic-on-sx1302.md](docs/meshtastic-on-sx1302.md)).
+
+## Support
+
+This is a spare-time project. If it gave your old hotspot a second life, or you just like it,
+you can support it:
+
+- [Sponsor on GitHub](https://github.com/sponsors/cyberjunky)
+- [Donate via PayPal](https://www.paypal.me/cyberjunkynl/)
+
+A star on GitHub, a bug report or an improvement in a pull request helps just as much.
 
 ## License
 
