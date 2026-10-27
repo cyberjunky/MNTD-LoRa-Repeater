@@ -631,6 +631,12 @@
     const cum = (claims) => { let c = 0; return [...(claims || [])].sort((a, b) => a.time - b.time).map((x) => ({ t: x.time, v: (c += x.amount) })); };
     lines($("#chart-he-hnt"), cum(t.HNT?.claims), ["v"], ["HNT"], { fmtVal: (v) => n1(v, 2), min: 0 });
     lines($("#chart-he-iot"), cum(t.IOT?.claims), ["v"], ["IOT"], { fmtVal: (v) => fmtAmt(v, 0), min: 0 });
+    // unclaimed at a logged time = lifetime then - (claimed now - claims made after it)
+    const hnt = t.HNT, log = (s.reward_log || []).filter((r) => r.token === "HNT");
+    const claimedAt = (ts) => hnt.claimed - (hnt.claims || []).filter((c) => c.time > ts).reduce((a, c) => a + c.amount, 0);
+    const unclaimed = hnt ? [...log.map((r) => ({ t: r.ts, v: r.lifetime - claimedAt(r.ts) })), { t: Date.now() / 1000, v: hnt.unclaimed }] : [];
+    $("#he-unclaimed-info").textContent = log.length ? `(earned, not yet claimed · logged since ${new Date(log[0].ts * 1000).toLocaleDateString()})` : "(earned, not yet claimed)";
+    lines($("#chart-he-unclaimed"), unclaimed, ["v"], ["HNT"], { fmtVal: (v) => fmtAmt(v, 4), min: 0 });
     kvRows($("#he-hotspot"), [
       ["Name", esc(h.name)], ["Hotspot key", h.key ? `<span class="mono">${esc(h.key)}</span>` : undefined],
       ["NFT asset", h.asset_id ? solscan("token", h.asset_id) : undefined],

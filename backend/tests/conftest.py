@@ -27,5 +27,6 @@ async def client(tmp_path):
     await db.add_event("system", "info", "test")
     app = create_app(cfg, db, mux, TimeSync(), Helium(cfg.helium, db))   # not started: no timedatectl
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        c.db = db                        # tests can seed rows
         yield c
     await db.close()

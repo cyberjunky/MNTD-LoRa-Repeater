@@ -126,3 +126,10 @@ async def test_settings_save_only_the_form_fields(tmp_path):
     assert cfg.meshsx.channels[0].name == "Other" and len(cfg.meshsx.channels[0].psk) == 44
     cfg.save_section("meshsx", {"position": None})
     assert Config.load(conf).meshsx.position is None and Config.load(conf).meshsx.long_name == "New"
+
+
+async def test_helium_reward_log(client):
+    await client.db.log_helium_reward("HNT", 1.5)
+    await client.db.log_helium_reward("HNT", 1.5)          # unchanged: not logged again
+    r = (await client.get("/api/helium")).json()
+    assert [(x["token"], x["lifetime"]) for x in r["reward_log"]] == [("HNT", 1.5)]

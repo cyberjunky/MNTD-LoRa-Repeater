@@ -175,7 +175,9 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync, heli
 
     @app.get("/api/helium")
     async def helium_view() -> dict[str, Any]:
-        return helium.status()
+        """The snapshot plus the logged lifetime totals (the unclaimed history is derived from them)."""
+        log = await db.fetch("SELECT ts, token, lifetime FROM helium_rewards ORDER BY ts")
+        return {**helium.status(), "reward_log": log}
 
     @app.get("/api/helium/traffic")
     async def helium_traffic(hours: int = Query(24, le=24 * 90)) -> dict[str, Any]:
