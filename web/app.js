@@ -256,6 +256,7 @@
   const DL_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 2v8m0 0L4.5 6.5M8 10l3.5-3.5M3 13h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const dlCol = (kind) => ({ h: "", f: (r) => r.id ? `<a class="dl" href="/api/${kind}/packets/${r.id}.json" download title="Download raw and decoded packet (JSON)">${DL_ICON}</a>` : "" });
   const LW_COLS = [
+    dlCol("lorawan"),
     { h: "Time", f: (r) => fmtTime(r.ts) },
     { h: "Dir", f: (r) => `<span class="badge ${r.direction}">${r.direction}</span>` },
     { h: "Type", f: (r) => r.mtype || "" },
@@ -270,12 +271,12 @@
     { h: "MAC", f: (r) => macText(r.mac) || (r.fopts ? `<span class="mono muted" title="encrypted (LoRaWAN 1.1)">${esc(r.fopts)}</span>` : "") },
     { h: "CRC", f: (r) => r.direction === "down" ? "" : r.stat === 1 ? "ok" : r.stat === -1 ? '<span class="badge bad">bad</span>' : "none" },
     { h: "Forwarded", f: (r) => (Array.isArray(r.forwarded) ? r.forwarded : []).join(", ") || (r.upstream || "") },
-    dlCol("lorawan"),
   ];
   const OV_LW_COLS = LW_COLS.filter((c) => ["Time", "Type", "DevAddr / DevEUI", "Network", "FCnt", "DR", "RSSI", "SNR", "Link", ""].includes(c.h));  // compact overview
   const nodeName = (n) => n ? (n.long_name || n.short_name || hex(n.num)) : null;
   let nodeMap = {};
   const MESH_COLS = [
+    dlCol("mesh"),
     { h: "Time", f: (r) => fmtTime(r.ts) },
     { h: "From", f: (r) => `<span title="${hex(r.from_node)}">${esc(nodeName(nodeMap[r.from_node]) || hex(r.from_node))}</span>` },
     { h: "To", f: (r) => r.to_node === 0xffffffff ? "broadcast" : esc(nodeName(nodeMap[r.to_node]) || hex(r.to_node)) },
@@ -287,7 +288,6 @@
     { h: "Link", f: (r) => r.direction === "tx" ? "" : linkBadge(r.snr, status?.meshsx?.datr) },   // the last hop, to us
     { h: "Via", f: (r) => r.via_mqtt ? "MQTT" : "RF" },
     { h: "Content", f: (r) => meshContent(r) },
-    dlCol("mesh"),
   ];
   const OV_MESH_COLS = MESH_COLS.filter((c) => c.h !== "Via");  // compact overview
   const NODE_COLS = [
@@ -544,11 +544,11 @@
       { h: "Downlinks", f: (r) => r.pull_resp, num: true }, { h: "Last PUSH_ACK", f: (r) => ago(r.last_push_ack) }, { h: "Last PULL_ACK", f: (r) => ago(r.last_pull_ack) },
     ], ups, { empty: "no upstream networks configured" });
     table($("#up-downlinks"), [
+      dlCol("lorawan"),
       { h: "Time", f: (r) => fmtTs(r.ts) }, { h: "From", f: (r) => esc(r.upstream || "") }, { h: "Type", f: (r) => r.mtype || "" },
       { h: "DevAddr", f: (r) => `<span class="mono">${esc(r.devaddr || "")}</span>` }, { h: "MHz", f: (r) => n1(r.freq, 3), num: true }, { h: "DR", f: (r) => r.datr || "" },
       { h: "Airtime", f: (r) => r.airtime_ms == null ? "" : `${n1(r.airtime_ms, 0)} ms`, num: true }, { h: "MAC", f: (r) => esc(macText(r.mac)) },
       { h: "Result", f: (r) => (Array.isArray(r.forwarded) && r.forwarded.length ? r.forwarded.join(", ") : "sent to radio") },
-      dlCol("lorawan"),
     ], downs, { empty: "no downlinks yet" });
   }
 
@@ -605,10 +605,11 @@
     const he_ = tr.earned?.HNT || {}, eurPrice = s.price?.HNT?.eur;
     $("#he-traffic-info").textContent = `last ${tr.hours} h · ${(tr.offered || 0).toLocaleString()} uplinks offered · ${tr.downlinks.length} downlinks requested (${tr.joins} join accepts)${tr.netids.length ? ` · partner NetIDs ${tr.netids.join(", ")}` : ""} · earned ${he_.amount == null ? "–" : `${fmtAmt(he_.amount, 6)} HNT${eurPrice ? ` ≈ € ${fmtAmt(he_.amount * eurPrice, 4)}` : ""}`}${he_.since ? ` since ${fmtTs(he_.since)}` : ""}`;
     table($("#he-downs"), [
+      dlCol("lorawan"),
       { h: "Time", f: (r) => fmtTs(r.ts) }, { h: "Type", f: (r) => r.mtype || "" },
       { h: "DevAddr", f: (r) => r.devaddr ? `<span class="mono">${esc(r.devaddr)}</span>` : '<span class="muted">join</span>' },
       { h: "NetID", f: (r) => esc(r.network || r.netid || "") }, { h: "MHz", f: (r) => n1(r.freq, 3), num: true }, { h: "DR", f: (r) => esc(r.datr || "") },
-      { h: "Result", f: (r) => esc((r.forwarded || []).join(", ")) }, dlCol("lorawan"),
+      { h: "Result", f: (r) => esc((r.forwarded || []).join(", ")) },
     ], tr.downlinks, { empty: "Helium requested no downlinks in this period" });
     table($("#he-traffic"), [
       { h: "DevAddr", f: (r) => `<span class="mono">${esc(r.devaddr)}</span>` }, { h: "Network", f: (r) => esc(r.network || `NetID ${r.netid || "?"}`) },

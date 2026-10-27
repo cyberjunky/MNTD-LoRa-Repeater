@@ -145,7 +145,7 @@ p.note { margin: 0 0 12px; font-size: 12px; color: var(--text-muted); max-width:
 
 a.dl { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 4px; color: var(--text-muted); vertical-align: middle; }
 a.dl:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); text-decoration: none; }
-.tbl td:has(> a.dl) { width: 1%; padding-top: 0; padding-bottom: 0; }
+.tbl td:has(> a.dl) { width: 1%; padding-top: 0; padding-bottom: 0; padding-right: 0; }
 
 /* chips */
 .badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font: 600 11px/1.5 var(--mono); white-space: nowrap;
