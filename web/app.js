@@ -135,10 +135,11 @@
   /** Multi-line time series: data = [{t, a, b}] */
   function lines(container, data, keys, names, { fmtVal = (v) => n1(v), min = null, max = null } = {}) {
     if (data.length < 2) return empty(container);
-    const f = frame(container, { left: 44 }), col = series();
     const vals = data.flatMap((d) => keys.map((k) => d[k]).filter((v) => v != null));
     let lo = min ?? Math.min(0, ...vals), hi = max ?? niceMax(Math.max(...vals, 1e-9));
     if (lo === hi) hi = lo + 1;
+    const widest = Math.max(...[0, 1, 2, 3, 4].map((i) => String(fmtVal(lo + ((hi - lo) * i) / 4)).length));
+    const f = frame(container, { left: Math.max(44, widest * 6.5 + 12) }), col = series();   // room for the longest y label
     const sx = (i) => f.x0 + ((f.x1 - f.x0) * i) / (data.length - 1), sy = (v) => f.y1 - ((f.y1 - f.y0) * (v - lo)) / (hi - lo);
     const g = svgEl("g", { class: "grid" }), a = svgEl("g", { class: "axis" });
     for (let i = 0; i <= 4; i++) { const v = lo + ((hi - lo) * i) / 4, y = sy(v); g.append(svgEl("line", { x1: f.x0, x2: f.x1, y1: y, y2: y })); const t = svgEl("text", { x: f.x0 - 6, y: y + 4, "text-anchor": "end" }); t.textContent = fmtVal(v); a.append(t); }
