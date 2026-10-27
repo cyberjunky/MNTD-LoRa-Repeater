@@ -337,13 +337,16 @@ class MeshSxEngine:
                 await self.db.conn.execute("UPDATE mesh_packets SET relayed_by_us = 1 WHERE id = ?", (row_id,))
                 await self.db.conn.commit()
         else:
+            chan = self.by_hash.get(hdr.channel_hash)       # our own frame: decode it back for the log
+            own = self._decode(chan, hdr, frame[HEADER_LEN:]) if chan else None
             await self.db.add_mesh_packet({
                 "direction": "tx", "source": "sx1302", "rx_time": int(time.time()), "packet_id": hdr.packet_id,
                 "from_node": hdr.sender, "to_node": hdr.to, "channel": 0, "portnum": kind.upper(),
                 "hop_limit": hdr.hop_limit, "hop_start": hdr.hop_start, "hops_used": 0, "relay_node": hdr.relay_node,
                 "next_hop": hdr.next_hop, "rssi": None, "snr": None, "via_mqtt": 0, "want_ack": int(hdr.want_ack),
                 "priority": None, "encrypted": 0, "text": text,
-                "payload": None, "airtime_ms": at, "relayed_by_us": 0, "raw": base64.b64encode(frame).decode(),
+                "payload": own and own["payload"], "airtime_ms": at, "relayed_by_us": 0, "channel_hash": hdr.channel_hash,
+                "raw": base64.b64encode(frame).decode(),
             })
         return True
 

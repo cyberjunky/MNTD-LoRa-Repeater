@@ -2,13 +2,14 @@
 
 import asyncio
 import base64
+import json
 
 import pytest
 from meshtastic.protobuf import mesh_pb2, portnums_pb2
 
 from lorarepeater.config import MeshSxConfig
 from lorarepeater.db import Database
-from lorarepeater.meshproto import BROADCAST, HEADER_LEN, Header, crypt, expand_psk
+from lorarepeater.meshproto import BROADCAST, HEADER_LEN, Header, crypt, expand_psk, node_id_str
 from lorarepeater.meshsx import MeshSxEngine
 
 ME = 0x0A0B0C42
@@ -208,3 +209,15 @@ async def test_frame_listener_ok_to_mqtt_and_own_sends(engine):
     assert frames[-1][1].packet_id == pid and frames[-1][3]["rssi"] is None
     mux.pulling = False      # not transmitted: no packet id, nothing for the uplink
     assert await eng.send_text("lost") is None and frames[-1][1].packet_id == pid
+
+
+async def test_own_frames_logged_raw_and_decoded(engine):
+    eng, _, db = engine
+    await eng.send_nodeinfo()
+    eng.on_rxpk(rxpk(make_frame("heard")))
+    await settle(eng)
+    tx = await db.fetchone("SELECT * FROM mesh_packets WHERE direction = 'tx'")
+    rx = await db.fetchone("SELECT * FROM mesh_packets WHERE direction = 'rx'")
+    assert json.loads(tx["payload"])["user"]["id"] == node_id_str(ME)            # decoded back from our own frame
+    assert Header.parse(base64.b64decode(tx["raw"])).sender == ME
+    assert base64.b64decode(rx["raw"]) == make_frame("heard")
