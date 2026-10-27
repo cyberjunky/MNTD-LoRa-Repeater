@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 
@@ -116,7 +116,7 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync, heli
     # -- LoRaWAN ----------------------------------------------------------------------
 
     @app.get("/api/lorawan/packets/{pid}.json")
-    async def lorawan_packet_export(pid: int) -> JSONResponse:
+    async def lorawan_packet_export(pid: int) -> Response:
         return await packet_export("lorawan", pid)
 
     @app.get("/api/lorawan/packets")
@@ -238,7 +238,7 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync, heli
     # -- Meshtastic -------------------------------------------------------------------
 
     @app.get("/api/mesh/packets/{pid}.json")
-    async def mesh_packet_export(pid: int) -> JSONResponse:
+    async def mesh_packet_export(pid: int) -> Response:
         return await packet_export("mesh", pid)
 
     @app.get("/api/mesh/packets")
@@ -375,7 +375,7 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync, heli
     else:
         log.warning("web.dir %s not found; GUI disabled", web_dir)
 
-    async def packet_export(kind: str, pid: int) -> JSONResponse:
+    async def packet_export(kind: str, pid: int) -> Response:
         """One stored packet as a JSON download: the raw frame (hex and base64), the radio metadata
         and every decoded field."""
         row = await db.fetchone(f"SELECT * FROM {kind}_packets WHERE id = ?", (pid,))
@@ -398,7 +398,8 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync, heli
             "radio": {k: row[k] for k in radio_keys if row.get(k) is not None},
             "decoded": decoded,
         }
-        return JSONResponse(doc, headers={"Content-Disposition": f'attachment; filename="{kind}-{pid}.json"'})
+        return Response(json.dumps(doc, indent=2) + "\n", media_type="application/json",   # indented: read it as is
+                        headers={"Content-Disposition": f'attachment; filename="{kind}-{pid}.json"'})
 
     return app
 
