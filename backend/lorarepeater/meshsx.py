@@ -171,7 +171,7 @@ class MeshSxEngine:
             "relay_node": hdr.relay_node, "next_hop": hdr.next_hop, "rssi": rssi, "snr": snr,
             "via_mqtt": int(hdr.via_mqtt), "want_ack": int(hdr.want_ack), "priority": None,
             "encrypted": 1, "text": None, "payload": None, "portnum": None,
-            "airtime_ms": airtime_ms(self.sf, self.bw_hz, self.cr, len(raw)),
+            "airtime_ms": airtime_ms(self.sf, self.bw_hz, self.cr, len(raw)), "raw": rx.get("data"),
         }
         chan = self.by_hash.get(hdr.channel_hash)
         decoded = None
@@ -343,7 +343,7 @@ class MeshSxEngine:
                 "hop_limit": hdr.hop_limit, "hop_start": hdr.hop_start, "hops_used": 0, "relay_node": hdr.relay_node,
                 "next_hop": hdr.next_hop, "rssi": None, "snr": None, "via_mqtt": 0, "want_ack": int(hdr.want_ack),
                 "priority": None, "encrypted": 0, "text": text,
-                "payload": None, "airtime_ms": at, "relayed_by_us": 0,
+                "payload": None, "airtime_ms": at, "relayed_by_us": 0, "raw": base64.b64encode(frame).decode(),
             })
         return True
 

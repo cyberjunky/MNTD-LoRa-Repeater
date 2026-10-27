@@ -106,7 +106,8 @@ CREATE TABLE IF NOT EXISTS mesh_packets (
     source      TEXT,                     -- 'sx1302' (our own node)
     relayed_by_us INTEGER DEFAULT 0,      -- 1 if we rebroadcast this frame
     airtime_ms  REAL,
-    channel_hash INTEGER                  -- header channel hash (identifies unknown/private channels)
+    channel_hash INTEGER,                 -- header channel hash (identifies unknown/private channels)
+    raw         TEXT                      -- base64 LoRa frame: 16-byte header + encrypted payload
 );
 CREATE INDEX IF NOT EXISTS ix_mesh_ts ON mesh_packets(ts);
 CREATE INDEX IF NOT EXISTS ix_mesh_from ON mesh_packets(from_node);

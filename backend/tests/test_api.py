@@ -133,3 +133,16 @@ async def test_helium_reward_log(client):
     await client.db.log_helium_reward("HNT", 1.5)          # unchanged: not logged again
     r = (await client.get("/api/helium")).json()
     assert [(x["token"], x["lifetime"]) for x in r["reward_log"]] == [("HNT", 1.5)]
+
+
+async def test_packet_export(client):
+    lw = (await client.get("/api/lorawan/packets")).json()[0]
+    r = await client.get(f"/api/lorawan/packets/{lw['id']}.json")
+    assert r.headers["content-disposition"] == f'attachment; filename="lorawan-{lw["id"]}.json"'
+    doc = r.json()
+    assert doc["kind"] == "lorawan" and doc["radio"]["freq"] == 868.1 and doc["decoded"]["devaddr"] == "26011A2B"
+    assert doc["decoded"]["forwarded"] == ["x"] and doc["raw"] is None          # the fixture row has no frame
+    mesh = (await client.get("/api/mesh/packets")).json()[0]
+    doc = (await client.get(f"/api/mesh/packets/{mesh['id']}.json")).json()
+    assert doc["decoded"]["from_id"] == "!00000001" and doc["decoded"]["text"] == "hi" and doc["radio"]["rssi"] == -90
+    assert (await client.get("/api/mesh/packets/999999.json")).status_code == 404

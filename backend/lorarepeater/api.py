@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import os
 import time
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 
@@ -113,6 +115,10 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync, heli
 
     # -- LoRaWAN ----------------------------------------------------------------------
 
+    @app.get("/api/lorawan/packets/{pid}.json")
+    async def lorawan_packet_export(pid: int) -> JSONResponse:
+        return await packet_export("lorawan", pid)
+
     @app.get("/api/lorawan/packets")
     async def lorawan_packets(
         limit: int = Query(100, le=2000), before_id: int | None = None,
@@ -189,7 +195,7 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync, heli
             "SELECT COUNT(*) AS n FROM lorawan_packets WHERE ts >= ? AND direction = 'up' "
             "AND forwarded LIKE '%\"helium\"%'", (since,))
         downlinks = await db.fetch(
-            "SELECT ts, mtype, devaddr, netid, network, freq, datr, airtime_ms, forwarded FROM lorawan_packets "
+            "SELECT id, ts, mtype, devaddr, netid, network, freq, datr, airtime_ms, forwarded FROM lorawan_packets "
             "WHERE ts >= ? AND direction = 'down' AND upstream = 'helium' ORDER BY ts DESC", (since,))
         for d in downlinks:
             d["forwarded"] = json.loads(d["forwarded"]) if d["forwarded"] else []
@@ -230,6 +236,10 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync, heli
         return await db.fetch("SELECT * FROM upstream_status ORDER BY name")
 
     # -- Meshtastic -------------------------------------------------------------------
+
+    @app.get("/api/mesh/packets/{pid}.json")
+    async def mesh_packet_export(pid: int) -> JSONResponse:
+        return await packet_export("mesh", pid)
 
     @app.get("/api/mesh/packets")
     async def mesh_packets(
@@ -365,4 +375,37 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync, heli
     else:
         log.warning("web.dir %s not found; GUI disabled", web_dir)
 
+    async def packet_export(kind: str, pid: int) -> JSONResponse:
+        """One stored packet as a JSON download: the raw frame (hex and base64), the radio metadata
+        and every decoded field."""
+        row = await db.fetchone(f"SELECT * FROM {kind}_packets WHERE id = ?", (pid,))
+        if row is None:
+            raise HTTPException(404, "no such packet")
+        raw_b64 = row.pop("data" if kind == "lorawan" else "raw")
+        raw = base64.b64decode(raw_b64) if raw_b64 else b""
+        radio_keys = EXPORT_RADIO[kind]
+        decoded = {k: v for k, v in row.items() if k not in radio_keys and k not in ("id", "ts") and v is not None}
+        for k in ("forwarded", "mac", "payload"):
+            if isinstance(decoded.get(k), str):
+                decoded[k] = json.loads(decoded[k])
+        if kind == "mesh":
+            for k in ("from_node", "to_node"):
+                if row.get(k) is not None:
+                    decoded[k.replace("_node", "_id")] = node_id_str(row[k])
+        doc = {
+            "kind": kind, "id": pid, "received": datetime.fromtimestamp(row["ts"], UTC).isoformat(),
+            "raw": {"length": len(raw), "hex": raw.hex(" ").upper(), "base64": raw_b64} if raw_b64 else None,
+            "radio": {k: row[k] for k in radio_keys if row.get(k) is not None},
+            "decoded": decoded,
+        }
+        return JSONResponse(doc, headers={"Content-Disposition": f'attachment; filename="{kind}-{pid}.json"'})
+
     return app
+
+
+# columns that describe the reception rather than the frame's content
+EXPORT_RADIO = {
+    "lorawan": ("direction", "gateway_eui", "upstream", "tmst", "time", "freq", "chan", "rfch", "stat", "modu", "datr",
+                "codr", "rssi", "lsnr", "size", "airtime_ms"),
+    "mesh": ("direction", "source", "rx_time", "rssi", "snr", "airtime_ms"),
+}
