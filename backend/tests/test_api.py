@@ -44,7 +44,8 @@ async def test_index_serves_gui(client):
 
 async def test_helium_traffic(client):
     r = (await client.get("/api/helium/traffic?hours=6")).json()
-    assert r["offered"] == 0 and r["downlinks"] == [] and r["devices"] == [] and r["earned"]["HNT"]["amount"] is None
+    assert r["offered"] == 0 and r["downlinks"] == [] and r["uplinks"] == [] and r["devices"] == []
+    assert r["earned"]["HNT"]["amount"] is None
 
 
 async def test_mesh_send_without_node(client):
@@ -141,7 +142,7 @@ async def test_packet_export(client):
     assert r.headers["content-disposition"] == f'attachment; filename="lorawan-{lw["id"]}.json"'
     doc = r.json()
     assert doc["kind"] == "lorawan" and doc["radio"]["freq"] == 868.1 and doc["decoded"]["devaddr"] == "26011A2B"
-    assert doc["decoded"]["forwarded"] == ["x"] and doc["raw"] is None          # the fixture row has no frame
+    assert doc["decoded"]["forwarded"] == ["x"] and doc["raw"]["base64"] == "QCsaASYABwACAQID3d3d3Q=="
     mesh = (await client.get("/api/mesh/packets")).json()[0]
     doc = (await client.get(f"/api/mesh/packets/{mesh['id']}.json")).json()
     assert doc["decoded"]["from_id"] == "!00000001" and doc["decoded"]["text"] == "hi" and doc["radio"]["rssi"] == -90

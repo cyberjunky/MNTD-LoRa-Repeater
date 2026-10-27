@@ -199,13 +199,28 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync, heli
             "WHERE ts >= ? AND direction = 'down' AND upstream = 'helium' ORDER BY ts DESC", (since,))
         for d in downlinks:
             d["forwarded"] = json.loads(d["forwarded"]) if d["forwarded"] else []
+        # Helium-bought traffic is not marked on the uplink itself. Closest local signal: DevAddr
+        # NetID is Helium, or Helium already sent that device a downlink through us.
         served = sorted({d["devaddr"] for d in downlinks if d["devaddr"]})
+        he_filter = "network = 'Helium'"
+        he_params: list[Any] = [since]
+        if served:
+            he_filter = f"({he_filter} OR devaddr IN ({','.join('?' * len(served))}))"
+            he_params.extend(served)
+        uplinks = await db.fetch(
+            "SELECT id, ts, mtype, devaddr, network, netid, freq, datr, rssi, lsnr, fcnt, fport, size, "
+            f"forwarded FROM lorawan_packets WHERE ts >= ? AND direction = 'up' "
+            f"AND {he_filter} ORDER BY ts DESC LIMIT 200",
+            he_params,
+        )
+        for u in uplinks:
+            u["forwarded"] = json.loads(u["forwarded"]) if u["forwarded"] else []
         devices = await db.fetch(
             f"SELECT devaddr, MAX(netid) AS netid, MAX(network) AS network, COUNT(*) AS n, AVG(rssi) AS rssi, "
             f"AVG(lsnr) AS snr, GROUP_CONCAT(DISTINCT datr) AS datr, MAX(fcnt) AS fcnt, MAX(ts) AS last_ts "
             f"FROM lorawan_packets WHERE ts >= ? AND direction = 'up' "
-            f"AND (network = 'Helium' OR devaddr IN ({','.join('?' * len(served))})) "
-            f"GROUP BY devaddr ORDER BY n DESC", (since, *served))
+            f"AND {he_filter} "
+            f"GROUP BY devaddr ORDER BY n DESC", he_params)
         earned = {}
         for sym in ("HNT", "IOT"):
             rows = await db.fetch("SELECT ts, lifetime FROM helium_rewards WHERE token = ? ORDER BY ts", (sym,))
@@ -215,7 +230,8 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync, heli
                            "since": base["ts"] if base else None,
                            "history": [r for r in rows if r["ts"] >= since]}
         return {"hours": hours, "offered": offered["n"],
-                "downlinks": downlinks, "joins": sum(d["mtype"] == "JoinAccept" for d in downlinks),
+                "downlinks": downlinks, "uplinks": uplinks,
+                "joins": sum(d["mtype"] == "JoinAccept" for d in downlinks),
                 "netids": sorted({d["netid"] for d in downlinks if d["netid"]}),
                 "devices": devices, "earned": earned}
 

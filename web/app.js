@@ -617,6 +617,19 @@
       { h: "RSSI", f: (r) => n1(r.rssi, 0), num: true }, { h: "SNR", f: (r) => n1(r.snr, 1), num: true }, { h: "Link", f: (r) => linkBadge(r.snr, r.datr) },
       { h: "Last seen", f: (r) => ago(r.last_ts) },
     ], tr.devices, { empty: "No device identified as served by Helium in this period" });
+    table($("#he-ups"), [
+      dlCol("lorawan"),
+      { h: "Time", f: (r) => fmtTs(r.ts) }, { h: "Type", f: (r) => r.mtype || "" },
+      { h: "DevAddr", f: (r) => r.devaddr ? `<span class="mono">${esc(r.devaddr)}</span>` : "" },
+      { h: "Network", f: (r) => esc(r.network || (r.netid ? `NetID ${r.netid}` : "")) },
+      { h: "FCnt", f: (r) => r.fcnt, num: true }, { h: "Port", f: (r) => r.fport, num: true },
+      { h: "MHz", f: (r) => n1(r.freq, 3), num: true }, { h: "DR", f: (r) => esc(r.datr || "") },
+      { h: "RSSI", f: (r) => r.rssi == null ? "" : n1(r.rssi, 0), num: true },
+      { h: "SNR", f: (r) => r.lsnr == null ? "" : n1(r.lsnr, 1), num: true },
+      { h: "Link", f: (r) => linkBadge(r.lsnr, r.datr) },
+      { h: "Bytes", f: (r) => r.size, num: true },
+      { h: "Forwarded", f: (r) => esc(r.forwarded.join(", ")) },
+    ], tr.uplinks, { empty: "No uplinks from Helium devices in this period" });
     const tiles = $("#he-tiles"), note = $("#he-note"); tiles.innerHTML = "";
     if (!s.enabled) { note.hidden = false; note.innerHTML = "<h3>Helium view disabled</h3><p>Set <span class=\"mono\">helium.enabled: true</span> in config.yaml.</p>"; return; }
     if (!s.updated) { note.hidden = false; note.innerHTML = "<h3>Collecting…</h3><p>The first Helium snapshot arrives about 10 seconds after the backend starts, then every 15 minutes.</p>"; return; }

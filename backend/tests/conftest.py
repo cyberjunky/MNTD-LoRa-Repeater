@@ -19,8 +19,10 @@ async def client(tmp_path):
     db = Database(cfg.db_path)
     await db.open()
     mux = GwmpMux(cfg.gwmp, db)          # not started: no sockets needed for the API
-    await db.add_lorawan_packet({"direction": "up", "freq": 868.1, "datr": "SF7BW125", "rssi": -80, "lsnr": 7,
-                                 "stat": 1, "devaddr": "26011A2B", "fcnt": 3, "mtype": "UnconfirmedDataUp", "forwarded": ["x"]})
+    await db.add_lorawan_packet({"direction": "up", "gateway_eui": "AA555A0000000001",
+                                 "freq": 868.1, "datr": "SF7BW125", "codr": "4/5", "rssi": -80, "lsnr": 7,
+                                 "stat": 1, "size": 16, "data": "QCsaASYABwACAQID3d3d3Q==",
+                                 "devaddr": "26011A2B", "fcnt": 7, "mtype": "UnconfirmedDataUp", "forwarded": ["x"]})
     await db.add_mesh_packet({"from_node": 1, "to_node": 0xFFFFFFFF, "portnum": "TEXT_MESSAGE_APP", "text": "hi",
                               "hop_limit": 2, "hop_start": 3, "hops_used": 1, "rssi": -90, "snr": 5})
     await db.upsert_mesh_node({"num": 1, "node_id": "!00000001", "long_name": "Test", "last_heard": time.time()})
