@@ -100,6 +100,7 @@ main { flex: 1; min-height: 0; overflow: auto; }
 .card > h3:first-child + .tbl, .card > .row:first-child + .tbl { margin-top: -12px; }
 .card > .tbl { width: calc(100% + 28px); margin-left: -14px; margin-right: -14px; }
 .card > .tbl + .pager { margin-top: 10px; }
+.card > .grid2 + .row { margin-top: 14px; }
 .card > .tbl:last-child, .card > .tbl:has(+ .pager[hidden]:last-child) { margin-bottom: -14px; }
 .card:has(> .tbl.compact) { overflow-x: auto; }   /* a wide compact table scrolls inside its panel */
 .row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-bottom: 8px; }

@@ -169,20 +169,21 @@
   const tile = (label, value, sub = "", status = null) => el("div", { class: "tile" },
     el("div", { class: "label" }, ...(status ? [el("span", { class: `status ${status}` })] : []), label),
     el("div", { class: /^\S{12,}$/.test(String(value)) ? "value long" : "value" }, value), el("div", { class: "sub" }, sub));
-  // tables keep their rows and render one page at a time; the pager sits right below the table
+  // tables keep their rows and render one page at a time; the pager sits right below the table.
+  // With `load`, rows are one server-side page out of `total`; load(page) fetches another {rows, total}.
   const PAGE_SIZE = 25;
-  function table(node, cols, rows, { empty: emptyMsg = "nothing yet", pageSize = PAGE_SIZE } = {}) {
-    node._t = { cols, rows: [...rows], page: 0, size: pageSize, empty: emptyMsg };
+  function table(node, cols, rows, { empty: emptyMsg = "nothing yet", pageSize = PAGE_SIZE, total = null, load = null } = {}) {
+    node._t = { cols, rows: [...rows], page: 0, size: pageSize, empty: emptyMsg, total, load };
     renderTable(node);
   }
   function renderTable(node, flashFirst = false) {
-    const t = node._t, pages = Math.max(1, Math.ceil(t.rows.length / t.size));
+    const t = node._t, count = t.total ?? t.rows.length, pages = Math.max(1, Math.ceil(count / t.size));
     t.page = Math.min(t.page, pages - 1);
     node.innerHTML = "";
     if (!t.rows.length) node.append(el("tr", {}, el("td", { class: "empty", colspan: t.cols.length }, t.empty)));
     else {
       node.append(el("tr", {}, ...t.cols.map((c) => el("th", { class: c.num ? "num" : "" }, c.h))));
-      t.rows.slice(t.page * t.size, (t.page + 1) * t.size).forEach((r, i) => {
+      (t.load ? t.rows : t.rows.slice(t.page * t.size, (t.page + 1) * t.size)).forEach((r, i) => {
         const tr = rowEl(t.cols, r); if (flashFirst && i === 0) tr.classList.add("new"); node.append(tr);
       });
     }
@@ -190,10 +191,13 @@
     if (!pager) { pager = el("div", { class: "pager" }); node.after(pager); }
     pager.hidden = pages < 2;
     pager.innerHTML = "";
-    const go = (p) => { t.page = p; renderTable(node); };
+    const go = (p) => {
+      if (!t.load) { t.page = p; renderTable(node); return; }
+      t.load(p).then(({ rows, total }) => { t.page = p; t.rows = rows; t.total = total; renderTable(node); }).catch(console.error);
+    };
     const btn = (label, p, off) => { const b = el("button", {}, label); b.disabled = off; b.onclick = () => go(p); return b; };
     pager.append(btn("«", 0, t.page === 0), btn("‹ Prev", t.page - 1, t.page === 0),
-      el("span", {}, `page ${t.page + 1} of ${pages} · ${t.rows.length} rows`),
+      el("span", {}, `page ${t.page + 1} of ${pages} · ${count.toLocaleString()} rows`),
       btn("Next ›", t.page + 1, t.page >= pages - 1), btn("»", pages - 1, t.page >= pages - 1));
   }
   const appendRows = (node, rows) => { node._t.rows.push(...rows); renderTable(node); };
@@ -600,10 +604,32 @@
     setTimeout(() => heMap.invalidateSize(), 50);
   }
 
+  const HE_UP_COLS = [
+    dlCol("lorawan"),
+    { h: "Time", f: (r) => fmtTs(r.ts) }, { h: "Type", f: (r) => r.mtype || "" },
+    { h: "DevAddr", f: (r) => r.devaddr ? `<span class="mono">${esc(r.devaddr)}</span>` : "" },
+    { h: "Network", f: (r) => esc(r.network || (r.netid ? `NetID ${r.netid}` : "")) },
+    { h: "FCnt", f: (r) => r.fcnt, num: true }, { h: "Port", f: (r) => r.fport, num: true },
+    { h: "MHz", f: (r) => n1(r.freq, 3), num: true }, { h: "DR", f: (r) => esc(r.datr || "") },
+    { h: "RSSI", f: (r) => r.rssi == null ? "" : n1(r.rssi, 0), num: true },
+    { h: "SNR", f: (r) => r.lsnr == null ? "" : n1(r.lsnr, 1), num: true },
+    { h: "Link", f: (r) => linkBadge(r.lsnr, r.datr) },
+    { h: "Bytes", f: (r) => r.size, num: true },
+    { h: "Forwarded", f: (r) => esc(r.forwarded.join(", ")) },
+  ];
+  // the uplinks offered to Helium are paged on the server: thousands a day, all of them kept
+  const heUplinks = (page) => api(`/api/helium/uplinks?hours=${hours()}&page=${page}&size=${PAGE_SIZE}&earning=${$("#he-ups-earning").checked}`);
+  async function refreshHeliumUplinks() {
+    const earning = $("#he-ups-earning").checked, r = await heUplinks(0);
+    table($("#he-ups"), HE_UP_COLS, r.rows, { total: r.total, load: heUplinks,
+      empty: earning ? "No uplinks from the devices Helium served in this period" : "No uplinks offered to Helium in this period" });
+  }
+  $("#he-ups-earning").onchange = () => refreshHeliumUplinks().catch(console.error);
+
   async function refreshHelium() {
-    const [s, ups, tr] = await Promise.all([api("/api/helium"), api("/api/lorawan/upstreams"), api(`/api/helium/traffic?hours=${hours()}`)]);
+    const [s, ups, tr] = await Promise.all([api("/api/helium"), api("/api/lorawan/upstreams"), api(`/api/helium/traffic?hours=${hours()}`), refreshHeliumUplinks()]);
     const he_ = tr.earned?.HNT || {}, eurPrice = s.price?.HNT?.eur;
-    $("#he-traffic-info").textContent = `last ${tr.hours} h · ${(tr.offered || 0).toLocaleString()} uplinks offered · ${tr.downlinks.length} downlinks requested (${tr.joins} join accepts)${tr.netids.length ? ` · partner NetIDs ${tr.netids.join(", ")}` : ""} · earned ${he_.amount == null ? "–" : `${fmtAmt(he_.amount, 6)} HNT${eurPrice ? ` ≈ € ${fmtAmt(he_.amount * eurPrice, 4)}` : ""}`}${he_.since ? ` since ${fmtTs(he_.since)}` : ""}`;
+    $("#he-traffic-info").textContent = `last ${tr.hours} h · ${(tr.offered || 0).toLocaleString()} uplinks offered, ${(tr.earning || 0).toLocaleString()} from devices Helium served · ${tr.downlinks.length} downlinks requested (${tr.joins} join accepts)${tr.netids.length ? ` · partner NetIDs ${tr.netids.join(", ")}` : ""} · earned ${he_.amount == null ? "–" : `${fmtAmt(he_.amount, 6)} HNT${eurPrice ? ` ≈ € ${fmtAmt(he_.amount * eurPrice, 4)}` : ""}`}${he_.since ? ` since ${fmtTs(he_.since)}` : ""}`;
     table($("#he-downs"), [
       dlCol("lorawan"),
       { h: "Time", f: (r) => fmtTs(r.ts) }, { h: "Type", f: (r) => r.mtype || "" },
@@ -617,19 +643,6 @@
       { h: "RSSI", f: (r) => n1(r.rssi, 0), num: true }, { h: "SNR", f: (r) => n1(r.snr, 1), num: true }, { h: "Link", f: (r) => linkBadge(r.snr, r.datr) },
       { h: "Last seen", f: (r) => ago(r.last_ts) },
     ], tr.devices, { empty: "No device identified as served by Helium in this period" });
-    table($("#he-ups"), [
-      dlCol("lorawan"),
-      { h: "Time", f: (r) => fmtTs(r.ts) }, { h: "Type", f: (r) => r.mtype || "" },
-      { h: "DevAddr", f: (r) => r.devaddr ? `<span class="mono">${esc(r.devaddr)}</span>` : "" },
-      { h: "Network", f: (r) => esc(r.network || (r.netid ? `NetID ${r.netid}` : "")) },
-      { h: "FCnt", f: (r) => r.fcnt, num: true }, { h: "Port", f: (r) => r.fport, num: true },
-      { h: "MHz", f: (r) => n1(r.freq, 3), num: true }, { h: "DR", f: (r) => esc(r.datr || "") },
-      { h: "RSSI", f: (r) => r.rssi == null ? "" : n1(r.rssi, 0), num: true },
-      { h: "SNR", f: (r) => r.lsnr == null ? "" : n1(r.lsnr, 1), num: true },
-      { h: "Link", f: (r) => linkBadge(r.lsnr, r.datr) },
-      { h: "Bytes", f: (r) => r.size, num: true },
-      { h: "Forwarded", f: (r) => esc(r.forwarded.join(", ")) },
-    ], tr.uplinks, { empty: "No uplinks from Helium devices in this period" });
     const tiles = $("#he-tiles"), note = $("#he-note"); tiles.innerHTML = "";
     if (!s.enabled) { note.hidden = false; note.innerHTML = "<h3>Helium view disabled</h3><p>Set <span class=\"mono\">helium.enabled: true</span> in config.yaml.</p>"; return; }
     if (!s.updated) { note.hidden = false; note.innerHTML = "<h3>Collecting…</h3><p>The first Helium snapshot arrives about 10 seconds after the backend starts, then every 15 minutes.</p>"; return; }

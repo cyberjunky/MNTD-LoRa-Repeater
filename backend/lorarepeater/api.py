@@ -185,42 +185,40 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync, heli
         log = await db.fetch("SELECT ts, token, lifetime FROM helium_rewards ORDER BY ts")
         return {**helium.status(), "reward_log": log}
 
-    @app.get("/api/helium/traffic")
-    async def helium_traffic(hours: int = Query(24, le=24 * 90)) -> dict[str, Any]:
-        """Facts about Helium in the period: what was offered, what Helium asked to transmit (and
-        for whom), uplinks from those devices, and what the reward oracle added. Which uplinks the
-        packet router bought is not visible locally; downlinks and rewards are."""
-        since = time.time() - hours * 3600
-        offered = await db.fetchone(
-            "SELECT COUNT(*) AS n FROM lorawan_packets WHERE ts >= ? AND direction = 'up' "
-            "AND forwarded LIKE '%\"helium\"%'", (since,))
+    async def helium_served(since: float) -> tuple[str, list[str], list[dict[str, Any]]]:
+        """Downlinks Helium requested since `since`, and the SQL clause (with its parameters) that
+        picks uplinks from the devices Helium served: DevAddr in a Helium NetID, or Helium already
+        sent that device a downlink through us. Which uplinks the packet router bought is not
+        marked on the uplink itself; this is the closest local signal. Downlink frames heard from
+        other gateways are stored as received too; Helium does not pay for those."""
         downlinks = await db.fetch(
             "SELECT id, ts, mtype, devaddr, netid, network, freq, datr, airtime_ms, forwarded FROM lorawan_packets "
             "WHERE ts >= ? AND direction = 'down' AND upstream = 'helium' ORDER BY ts DESC", (since,))
         for d in downlinks:
             d["forwarded"] = json.loads(d["forwarded"]) if d["forwarded"] else []
-        # Helium-bought traffic is not marked on the uplink itself. Closest local signal: DevAddr
-        # NetID is Helium, or Helium already sent that device a downlink through us.
         served = sorted({d["devaddr"] for d in downlinks if d["devaddr"]})
-        he_filter = "network = 'Helium'"
-        he_params: list[Any] = [since]
+        clause = "network = 'Helium'"
         if served:
-            he_filter = f"({he_filter} OR devaddr IN ({','.join('?' * len(served))}))"
-            he_params.extend(served)
-        uplinks = await db.fetch(
-            "SELECT id, ts, mtype, devaddr, network, netid, freq, datr, rssi, lsnr, fcnt, fport, size, "
-            f"forwarded FROM lorawan_packets WHERE ts >= ? AND direction = 'up' "
-            f"AND {he_filter} ORDER BY ts DESC LIMIT 200",
-            he_params,
-        )
-        for u in uplinks:
-            u["forwarded"] = json.loads(u["forwarded"]) if u["forwarded"] else []
+            clause = f"({clause} OR devaddr IN ({','.join('?' * len(served))}))"
+        return f"{clause} AND mtype LIKE '%Up'", served, downlinks
+
+    offered_sql = "direction = 'up' AND forwarded LIKE '%\"helium\"%'"
+
+    @app.get("/api/helium/traffic")
+    async def helium_traffic(hours: int = Query(24, le=24 * 90)) -> dict[str, Any]:
+        """Facts about Helium in the period: what was offered, what Helium asked to transmit (and
+        for whom), the devices it served, and what the reward oracle added."""
+        since = time.time() - hours * 3600
+        served, params, downlinks = await helium_served(since)
+        offered = await db.fetchone(
+            f"SELECT COUNT(*) AS n FROM lorawan_packets WHERE ts >= ? AND {offered_sql}", (since,))
+        earning = await db.fetchone(
+            f"SELECT COUNT(*) AS n FROM lorawan_packets WHERE ts >= ? AND {offered_sql} AND {served}", [since, *params])
         devices = await db.fetch(
-            f"SELECT devaddr, MAX(netid) AS netid, MAX(network) AS network, COUNT(*) AS n, AVG(rssi) AS rssi, "
-            f"AVG(lsnr) AS snr, GROUP_CONCAT(DISTINCT datr) AS datr, MAX(fcnt) AS fcnt, MAX(ts) AS last_ts "
-            f"FROM lorawan_packets WHERE ts >= ? AND direction = 'up' "
-            f"AND {he_filter} "
-            f"GROUP BY devaddr ORDER BY n DESC", he_params)
+            "SELECT devaddr, MAX(netid) AS netid, MAX(network) AS network, COUNT(*) AS n, AVG(rssi) AS rssi, "
+            "AVG(lsnr) AS snr, GROUP_CONCAT(DISTINCT datr) AS datr, MAX(fcnt) AS fcnt, MAX(ts) AS last_ts "
+            f"FROM lorawan_packets WHERE ts >= ? AND direction = 'up' AND {served} "
+            "GROUP BY devaddr ORDER BY n DESC", [since, *params])
         earned = {}
         for sym in ("HNT", "IOT"):
             rows = await db.fetch("SELECT ts, lifetime FROM helium_rewards WHERE token = ? ORDER BY ts", (sym,))
@@ -229,11 +227,29 @@ def create_app(cfg: Config, db: Database, mux: GwmpMux, timesync: TimeSync, heli
             earned[sym] = {"amount": rows[-1]["lifetime"] - base["lifetime"] if base else None,
                            "since": base["ts"] if base else None,
                            "history": [r for r in rows if r["ts"] >= since]}
-        return {"hours": hours, "offered": offered["n"],
-                "downlinks": downlinks, "uplinks": uplinks,
+        return {"hours": hours, "offered": offered["n"], "earning": earning["n"],
+                "downlinks": downlinks,
                 "joins": sum(d["mtype"] == "JoinAccept" for d in downlinks),
                 "netids": sorted({d["netid"] for d in downlinks if d["netid"]}),
                 "devices": devices, "earned": earned}
+
+    @app.get("/api/helium/uplinks")
+    async def helium_uplinks(hours: int = Query(24, le=24 * 90), page: int = Query(0, ge=0),
+                             size: int = Query(25, ge=1, le=200), earning: bool = False) -> dict[str, Any]:
+        """One page of the uplinks offered to Helium, newest first. `earning` keeps only those from
+        the devices Helium served (see helium_served)."""
+        since = time.time() - hours * 3600
+        where, params = f"ts >= ? AND {offered_sql}", [since]
+        if earning:
+            served, extra, _ = await helium_served(since)
+            where, params = f"{where} AND {served}", [since, *extra]
+        total = await db.fetchone(f"SELECT COUNT(*) AS n FROM lorawan_packets WHERE {where}", params)
+        rows = await db.fetch(
+            "SELECT id, ts, mtype, devaddr, network, netid, freq, datr, rssi, lsnr, fcnt, fport, size, forwarded "
+            f"FROM lorawan_packets WHERE {where} ORDER BY ts DESC LIMIT ? OFFSET ?", [*params, size, page * size])
+        for u in rows:
+            u["forwarded"] = json.loads(u["forwarded"]) if u["forwarded"] else []
+        return {"total": total["n"], "rows": rows}
 
     @app.get("/api/helium/nearby")
     async def helium_nearby() -> dict[str, Any]:

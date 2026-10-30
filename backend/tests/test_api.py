@@ -44,8 +44,30 @@ async def test_index_serves_gui(client):
 
 async def test_helium_traffic(client):
     r = (await client.get("/api/helium/traffic?hours=6")).json()
-    assert r["offered"] == 0 and r["downlinks"] == [] and r["uplinks"] == [] and r["devices"] == []
+    assert r["offered"] == 0 and r["earning"] == 0 and r["downlinks"] == [] and r["devices"] == []
     assert r["earned"]["HNT"]["amount"] is None
+
+
+async def test_helium_uplinks_paged_and_earning(client):
+    up = {"direction": "up", "freq": 868.1, "datr": "SF7BW125", "mtype": "UnconfirmedDataUp", "forwarded": ["ttn", "helium"]}
+    for i in range(3):
+        await client.db.add_lorawan_packet({**up, "devaddr": "26011A2B", "network": "TTN", "fcnt": i})
+    await client.db.add_lorawan_packet({**up, "devaddr": "48000001", "netid": "000024", "fcnt": 9})
+    await client.db.add_lorawan_packet({**up, "devaddr": "48000002", "network": "Helium", "fcnt": 1})
+    await client.db.add_lorawan_packet({**up, "devaddr": "26011A2B", "fcnt": 4, "forwarded": ["ttn"]})   # not offered
+    await client.db.add_lorawan_packet({**up, "devaddr": "48000001", "netid": "000024", "fcnt": 2,
+                                        "mtype": "UnconfirmedDataDown"})   # another gateway's downlink, heard
+    await client.db.add_lorawan_packet({"direction": "down", "upstream": "helium", "devaddr": "48000001",
+                                        "mtype": "UnconfirmedDataDown", "netid": "000024", "forwarded": ["radio"]})
+    r = (await client.get("/api/helium/uplinks?hours=1&size=2")).json()
+    assert r["total"] == 6 and [x["fcnt"] for x in r["rows"]] == [2, 1] and r["rows"][0]["forwarded"] == ["ttn", "helium"]
+    r = (await client.get("/api/helium/uplinks?hours=1&size=2&page=2")).json()
+    assert r["total"] == 6 and [x["fcnt"] for x in r["rows"]] == [1, 0]
+    r = (await client.get("/api/helium/uplinks?hours=1&earning=true")).json()
+    assert r["total"] == 2 and sorted(x["devaddr"] for x in r["rows"]) == ["48000001", "48000002"]
+    t = (await client.get("/api/helium/traffic?hours=1")).json()
+    assert t["offered"] == 6 and t["earning"] == 2 and t["netids"] == ["000024"]
+    assert sorted((d["devaddr"], d["n"]) for d in t["devices"]) == [("48000001", 1), ("48000002", 1)]
 
 
 async def test_mesh_send_without_node(client):
