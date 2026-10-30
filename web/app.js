@@ -172,8 +172,9 @@
   // tables keep their rows and render one page at a time; the pager sits right below the table.
   // With `load`, rows are one server-side page out of `total`; load(page) fetches another {rows, total}.
   const PAGE_SIZE = 25;
-  function table(node, cols, rows, { empty: emptyMsg = "nothing yet", pageSize = PAGE_SIZE, total = null, load = null } = {}) {
-    node._t = { cols, rows: [...rows], page: 0, size: pageSize, empty: emptyMsg, total, load };
+  // pager: true keeps the pager (with the row count) visible even when everything fits on one page
+  function table(node, cols, rows, { empty: emptyMsg = "nothing yet", pageSize = PAGE_SIZE, total = null, load = null, pager = false } = {}) {
+    node._t = { cols, rows: [...rows], page: 0, size: pageSize, empty: emptyMsg, total, load, pager };
     renderTable(node);
   }
   function renderTable(node, flashFirst = false) {
@@ -189,7 +190,7 @@
     }
     let pager = node.nextElementSibling?.classList.contains("pager") ? node.nextElementSibling : null;
     if (!pager) { pager = el("div", { class: "pager" }); node.after(pager); }
-    pager.hidden = pages < 2;
+    pager.hidden = pages < 2 && !(t.pager && count);
     pager.innerHTML = "";
     const go = (p) => {
       if (!t.load) { t.page = p; renderTable(node); return; }
@@ -621,7 +622,7 @@
   const heUplinks = (page) => api(`/api/helium/uplinks?hours=${hours()}&page=${page}&size=${PAGE_SIZE}&earning=${$("#he-ups-earning").checked}`);
   async function refreshHeliumUplinks() {
     const earning = $("#he-ups-earning").checked, r = await heUplinks(0);
-    table($("#he-ups"), HE_UP_COLS, r.rows, { total: r.total, load: heUplinks,
+    table($("#he-ups"), HE_UP_COLS, r.rows, { total: r.total, load: heUplinks, pager: true,
       empty: earning ? "No uplinks from the devices Helium served in this period" : "No uplinks offered to Helium in this period" });
   }
   $("#he-ups-earning").onchange = () => refreshHeliumUplinks().catch(console.error);
@@ -636,13 +637,13 @@
       { h: "DevAddr", f: (r) => r.devaddr ? `<span class="mono">${esc(r.devaddr)}</span>` : '<span class="muted">join</span>' },
       { h: "NetID", f: (r) => esc(r.network || r.netid || "") }, { h: "MHz", f: (r) => n1(r.freq, 3), num: true }, { h: "DR", f: (r) => esc(r.datr || "") },
       { h: "Result", f: (r) => esc((r.forwarded || []).join(", ")) },
-    ], tr.downlinks, { empty: "Helium requested no downlinks in this period" });
+    ], tr.downlinks, { empty: "Helium requested no downlinks in this period", pager: true });
     table($("#he-traffic"), [
       { h: "DevAddr", f: (r) => `<span class="mono">${esc(r.devaddr)}</span>` }, { h: "Network", f: (r) => esc(r.network || `NetID ${r.netid || "?"}`) },
       { h: "Uplinks", f: (r) => r.n, num: true }, { h: "DR", f: (r) => esc(r.datr || "") },
       { h: "RSSI", f: (r) => n1(r.rssi, 0), num: true }, { h: "SNR", f: (r) => n1(r.snr, 1), num: true }, { h: "Link", f: (r) => linkBadge(r.snr, r.datr) },
       { h: "Last seen", f: (r) => ago(r.last_ts) },
-    ], tr.devices, { empty: "No device identified as served by Helium in this period" });
+    ], tr.devices, { empty: "No device identified as served by Helium in this period", pager: true });
     const tiles = $("#he-tiles"), note = $("#he-note"); tiles.innerHTML = "";
     if (!s.enabled) { note.hidden = false; note.innerHTML = "<h3>Helium view disabled</h3><p>Set <span class=\"mono\">helium.enabled: true</span> in config.yaml.</p>"; return; }
     if (!s.updated) { note.hidden = false; note.innerHTML = "<h3>Collecting…</h3><p>The first Helium snapshot arrives about 10 seconds after the backend starts, then every 15 minutes.</p>"; return; }
