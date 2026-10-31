@@ -116,6 +116,11 @@ you can support it:
 - [Sponsor on GitHub](https://github.com/sponsors/cyberjunky)
 - [Donate via PayPal](https://www.paypal.me/cyberjunkynl/)
 
+<a href="https://discord.gg/hUBQxRhJCU">
+  <img src="https://raw.githubusercontent.com/cyberjunky/cyberjunky/main/assets/junkyard-discord.svg"
+       alt="Join The Junkyard on Discord" width="600">
+</a>
+
 A star on GitHub, a bug report or an improvement in a pull request helps just as much.
 
 ## License
